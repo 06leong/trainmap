@@ -1,0 +1,7 @@
+{
+  "name": "trainmap",
+  "short_name": "trainmap",
+  "display": "standalone",
+  "background_color": "#f8f5ef",
+  "theme_color": "#111827"
+}

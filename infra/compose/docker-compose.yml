@@ -1,0 +1,48 @@
+services:
+  app:
+    image: ${TRAINMAP_IMAGE:-ghcr.io/owner/trainmap:latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: ${TRAINMAP_INTERNAL_PORT:-3000}
+      DATABASE_URL: postgres://${POSTGRES_USER:-trainmap}:${POSTGRES_PASSWORD:-trainmap}@postgres:5432/${POSTGRES_DB:-trainmap}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://trainmap.example.com}
+      NEXT_PUBLIC_MAP_STYLE_LIGHT: ${NEXT_PUBLIC_MAP_STYLE_LIGHT:-https://tiles.openfreemap.org/styles/bright}
+      NEXT_PUBLIC_MAP_STYLE_DARK: ${NEXT_PUBLIC_MAP_STYLE_DARK:-https://tiles.openfreemap.org/styles/liberty}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "${TRAINMAP_INTERNAL_PORT:-3000}"
+    networks:
+      - trainmap_internal
+      - reverse_proxy
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-trainmap}
+      POSTGRES_USER: ${POSTGRES_USER:-trainmap}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trainmap}
+    volumes:
+      - trainmap_postgres:/var/lib/postgresql/data
+      - ../../db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trainmap} -d ${POSTGRES_DB:-trainmap}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trainmap_internal
+
+volumes:
+  trainmap_postgres:
+
+networks:
+  trainmap_internal:
+    internal: true
+  reverse_proxy:
+    external: true
+    name: ${REVERSE_PROXY_NETWORK:-proxy}
