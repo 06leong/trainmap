@@ -1,0 +1,8 @@
+.git
+.next
+node_modules
+coverage
+.env*
+npm-debug.log*
+trainmap_codex_bundle.md
+trainmap_codex_bootstrap.sh

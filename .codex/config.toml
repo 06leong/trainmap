@@ -1,0 +1,23 @@
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+project_doc_max_bytes = 32768
+project_doc_fallback_filenames = ["AGENTS.md"]
+
+[agents]
+max_threads = 4
+max_depth = 1
+
+[agents.ui_polish]
+description = "Specialist for premium UI, layout density, motion, typography, export layouts, and visual refinement."
+config_file = ".codex/agents/ui-polish.toml"
+nickname_candidates = ["Atlas", "Ivory", "Ember"]
+
+[agents.geo_routing]
+description = "Specialist for route geometry, station matching, waypoint editing, map rendering, and geospatial data handling."
+config_file = ".codex/agents/geo-routing.toml"
+nickname_candidates = ["Track", "Signal", "Contour"]
+
+[agents.data_ingestion]
+description = "Specialist for CSV import, schema mapping, data cleanup, encoding repair, validation, and provider adapters."
+config_file = ".codex/agents/data-ingestion.toml"
+nickname_candidates = ["Parse", "Schema", "Delta"]

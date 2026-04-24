@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/domain" },
+    { "path": "packages/exporter" },
+    { "path": "packages/geo" },
+    { "path": "packages/importer" },
+    { "path": "packages/timetable-adapters" },
+    { "path": "packages/ui" }
+  ]
+}

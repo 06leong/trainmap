@@ -1,0 +1,104 @@
+prefix_rule(
+    pattern = ["git", "status"],
+    decision = "allow",
+    justification = "Read-only repository inspection is safe.",
+    match = ["git status"],
+)
+
+prefix_rule(
+    pattern = ["git", "diff"],
+    decision = "allow",
+    justification = "Read-only diff inspection is safe.",
+    match = ["git diff", "git diff --staged"],
+)
+
+prefix_rule(
+    pattern = ["git", "log"],
+    decision = "allow",
+    justification = "Read-only history inspection is safe.",
+    match = ["git log --oneline -n 20"],
+)
+
+prefix_rule(
+    pattern = ["pnpm", "lint"],
+    decision = "allow",
+    justification = "Linting is part of the normal validation loop.",
+    match = ["pnpm lint"],
+)
+
+prefix_rule(
+    pattern = ["pnpm", "test"],
+    decision = "allow",
+    justification = "Tests are part of the normal validation loop.",
+    match = ["pnpm test"],
+)
+
+prefix_rule(
+    pattern = ["pnpm", "build"],
+    decision = "allow",
+    justification = "Build verification is part of the normal validation loop.",
+    match = ["pnpm build"],
+)
+
+prefix_rule(
+    pattern = ["docker", "compose", "ps"],
+    decision = "allow",
+    justification = "Read-only compose inspection is safe.",
+    match = ["docker compose ps"],
+)
+
+prefix_rule(
+    pattern = ["docker", "compose", "logs"],
+    decision = "allow",
+    justification = "Read-only log inspection is safe.",
+    match = ["docker compose logs", "docker compose logs app"],
+)
+
+prefix_rule(
+    pattern = ["docker", "compose", "up"],
+    decision = "prompt",
+    justification = "Starting or recreating containers changes the local environment.",
+    match = ["docker compose up -d"],
+)
+
+prefix_rule(
+    pattern = ["docker", "compose", "down"],
+    decision = "prompt",
+    justification = "Stopping the compose stack changes the local environment.",
+    match = ["docker compose down"],
+)
+
+prefix_rule(
+    pattern = ["bash", "-lc"],
+    decision = "prompt",
+    justification = "Shell wrappers can hide multiple commands and should be reviewed.",
+    match = ["bash -lc 'pnpm lint && pnpm test'"],
+)
+
+prefix_rule(
+    pattern = ["sh", "-c"],
+    decision = "prompt",
+    justification = "Shell wrappers can hide multiple commands and should be reviewed.",
+    match = ["sh -c 'pnpm build'"],
+)
+
+prefix_rule(
+    pattern = ["zsh", "-c"],
+    decision = "prompt",
+    justification = "Shell wrappers can hide multiple commands and should be reviewed.",
+    match = ["zsh -c 'pnpm lint'"],
+)
+
+prefix_rule(
+    pattern = ["rm"],
+    decision = "forbidden",
+    justification = "Do not use rm directly. Use safer file edits or approved cleanup commands.",
+    match = ["rm -rf .next"],
+)
+
+prefix_rule(
+    pattern = ["sudo"],
+    decision = "forbidden",
+    justification = "Do not use sudo from Codex in this repository.",
+    match = ["sudo apt update"],
+)

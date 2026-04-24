@@ -1,0 +1,10 @@
+.next/
+dist/
+node_modules/
+coverage/
+.env
+.env.local
+.env.production
+npm-debug.log*
+*.tsbuildinfo
+.codex-dev-*.log

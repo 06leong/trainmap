@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@trainmap/domain": ["packages/domain/src/index.ts"],
+      "@trainmap/domain/*": ["packages/domain/src/*"],
+      "@trainmap/exporter": ["packages/exporter/src/index.ts"],
+      "@trainmap/exporter/*": ["packages/exporter/src/*"],
+      "@trainmap/geo": ["packages/geo/src/index.ts"],
+      "@trainmap/geo/*": ["packages/geo/src/*"],
+      "@trainmap/importer": ["packages/importer/src/index.ts"],
+      "@trainmap/importer/*": ["packages/importer/src/*"],
+      "@trainmap/timetable-adapters": ["packages/timetable-adapters/src/index.ts"],
+      "@trainmap/timetable-adapters/*": ["packages/timetable-adapters/src/*"],
+      "@trainmap/ui": ["packages/ui/src/index.ts"],
+      "@trainmap/ui/*": ["packages/ui/src/*"]
+    }
+  }
+}
