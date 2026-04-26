@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { FileText, Upload } from "lucide-react";
-import { demoStations } from "@trainmap/domain";
-import { buildImportPreview, type ImportPreview } from "@trainmap/importer";
+import { useEffect, useMemo, useState } from "react";
+import { useFormState } from "react-dom";
+import { CheckCircle2, FileText, Upload } from "lucide-react";
+import type { Station } from "@trainmap/domain";
+import { buildImportPreview, importFields, type ColumnMapping, type ImportField, type ImportPreview } from "@trainmap/importer";
 import { cn } from "@trainmap/ui";
+import { commitImportAction, type ImportActionState } from "@/lib/actions/imports";
 
 const sampleCsv = [
   "from_station_name,to_station_name,departure_date,departure_time,operator,train_code,distance,tags,notes",
@@ -13,12 +15,24 @@ const sampleCsv = [
   "Unknown Central,Berlin Hbf,2025-06-03,08:00,DB,ICE 100,500,work,Unmatched origin"
 ].join("\n");
 
-export function ImportWizard() {
+export function ImportWizard({ stations }: { stations: Station[] }) {
   const [csvText, setCsvText] = useState(sampleCsv);
-  const preview = useMemo<ImportPreview>(() => buildImportPreview(csvText, demoStations), [csvText]);
+  const [sourceName, setSourceName] = useState("pasted-viaducttrip.csv");
+  const autoPreview = useMemo<ImportPreview>(() => buildImportPreview(csvText, stations), [csvText, stations]);
+  const [mapping, setMapping] = useState<ColumnMapping>(autoPreview.mapping);
+  const activeMapping = Object.keys(mapping).length > 0 ? mapping : autoPreview.mapping;
+  const preview = useMemo<ImportPreview>(() => buildImportPreview(csvText, stations, activeMapping), [activeMapping, csvText, stations]);
+  const [state, formAction] = useFormState<ImportActionState, FormData>(commitImportAction, { status: "idle" });
+
+  useEffect(() => {
+    setMapping(autoPreview.mapping);
+  }, [autoPreview.mapping]);
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+    <form action={formAction} className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+      <input type="hidden" name="csvText" value={csvText} />
+      <input type="hidden" name="mappingJson" value={JSON.stringify(activeMapping)} />
+      <input type="hidden" name="sourceName" value={sourceName} />
       <section className="rounded-md border border-black/10 bg-white/72 p-4 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="rounded-md bg-ink p-2 text-white">
@@ -43,6 +57,7 @@ export function ImportWizard() {
               }
               const reader = new FileReader();
               reader.onload = () => setCsvText(String(reader.result ?? ""));
+              setSourceName(file.name);
               reader.readAsText(file);
             }}
           />
@@ -52,11 +67,63 @@ export function ImportWizard() {
           onChange={(event) => setCsvText(event.target.value)}
           className="mt-4 h-[360px] w-full rounded-md border border-black/10 bg-[#111827] p-4 font-mono text-xs leading-5 text-white outline-none focus:border-rail"
         />
+        <div className="mt-4 rounded-md border border-black/10 bg-[#f8f5ef] p-3">
+          <div className="text-xs uppercase text-black/45">Column mapping</div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {importFields.map((field) => (
+              <label key={field} className="grid gap-1 text-xs text-black/58">
+                <span>{fieldLabel(field)}</span>
+                <select
+                  value={activeMapping[field] ?? ""}
+                  onChange={(event) =>
+                    setMapping((current) => ({
+                      ...current,
+                      [field]: event.target.value || undefined
+                    }))
+                  }
+                  className="rounded-md border border-black/10 bg-white px-2 py-2 text-sm text-ink outline-none focus:border-rail"
+                >
+                  <option value="">Not mapped</option>
+                  {preview.headers.map((header) => (
+                    <option key={header} value={header}>
+                      {header}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+        </div>
       </section>
 
       <section className="rounded-md border border-black/10 bg-white/72 shadow-sm">
         <div className="border-b border-black/10 p-4">
-          <h2 className="font-display text-2xl text-ink">Dry-run preview</h2>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-display text-2xl text-ink">Dry-run preview</h2>
+              <p className="mt-1 text-sm text-black/58">Every row is preserved. Matched and fuzzy rows can be committed; invalid and unmatched rows remain reviewable.</p>
+            </div>
+            <button
+              type="submit"
+              className="inline-flex items-center gap-2 rounded-md bg-rail px-4 py-2.5 text-sm text-white disabled:opacity-40"
+              disabled={preview.rows.length === 0}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Confirm import
+            </button>
+          </div>
+          {state.message ? (
+            <div
+              className={cn(
+                "mt-3 rounded-md border px-3 py-2 text-sm",
+                state.status === "success" && "border-emerald-700/20 bg-emerald-50 text-emerald-800",
+                state.status === "error" && "border-rose-700/20 bg-rose-50 text-rose-800"
+              )}
+            >
+              {state.message}
+              {state.result ? <span> Import ID: {state.result.importRun.id}</span> : null}
+            </div>
+          ) : null}
           <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
             {Object.entries(preview.counts).map(([status, count]) => (
               <div key={status} className="rounded-md border border-black/10 bg-[#f8f5ef] p-3">
@@ -101,6 +168,10 @@ export function ImportWizard() {
           ))}
         </div>
       </section>
-    </div>
+    </form>
   );
+}
+
+function fieldLabel(field: ImportField): string {
+  return field.replaceAll("_", " ");
 }

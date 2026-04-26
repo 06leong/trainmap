@@ -1,4 +1,4 @@
-import type { Station } from "@trainmap/domain";
+import type { CommitImportInput, CreateTripInput, ImportRow, Station, TripStopInput } from "@trainmap/domain";
 import { parseCsv } from "./csv";
 
 export type ImportField =
@@ -15,6 +15,20 @@ export type ImportField =
   | "notes";
 
 export type ColumnMapping = Partial<Record<ImportField, string>>;
+
+export const importFields: ImportField[] = [
+  "from_station_name",
+  "to_station_name",
+  "departure_date",
+  "departure_time",
+  "arrival_date",
+  "arrival_time",
+  "operator",
+  "train_code",
+  "distance",
+  "tags",
+  "notes"
+];
 
 export interface StationMatch {
   input: string;
@@ -79,6 +93,14 @@ export function buildImportPreview(
   const parsed = parseCsv(csvText);
   const mapping = suppliedMapping ?? inferColumnMapping(parsed.headers);
   const rows = parsed.rows.map((row, index) => previewRow(index + 2, row, mapping, stations));
+  const rowsByNumber = new Map(rows.map((row) => [row.rowNumber, row]));
+  for (const error of parsed.errors) {
+    const row = rowsByNumber.get(error.rowNumber);
+    if (row) {
+      row.messages.push(error.message);
+      row.status = "invalid";
+    }
+  }
   const counts: ImportPreview["counts"] = {
     matched: 0,
     fuzzy_matched: 0,
@@ -127,6 +149,79 @@ export function matchStation(input: string, stations: Station[]): StationMatch {
   return { input, score: scored?.score ?? 0, status: "unmatched" };
 }
 
+export function importRowFingerprint(row: ImportPreviewRow): string {
+  return stableHash(JSON.stringify(sortRecord(row.raw)));
+}
+
+export function isCommittableImportRow(row: ImportPreviewRow): boolean {
+  return row.status === "matched" || row.status === "fuzzy_matched";
+}
+
+export function previewRowToTripInput(row: ImportPreviewRow, rowHash = importRowFingerprint(row)): CreateTripInput | null {
+  if (!isCommittableImportRow(row) || !row.fromStation.station || !row.toStation.station) {
+    return null;
+  }
+
+  const fromStop = stationToStop(row.fromStation.station, 1, row.fromStation.status, combineDateTime(row.normalized.departure_date, row.normalized.departure_time));
+  const toStop = stationToStop(
+    row.toStation.station,
+    2,
+    row.toStation.status,
+    combineDateTime(row.normalized.arrival_date || row.normalized.departure_date, row.normalized.arrival_time)
+  );
+
+  return {
+    title: `${row.fromStation.station.name} to ${row.toStation.station.name}`,
+    date: row.normalized.departure_date,
+    arrivalDate: row.normalized.arrival_date || undefined,
+    operatorName: row.normalized.operator || "Unknown operator",
+    trainCode: row.normalized.train_code || undefined,
+    distanceKm: parseDistance(row.normalized.distance),
+    stops: [fromStop, toStop],
+    rawImportRow: {
+      ...row.raw,
+      trainmap_import_row_hash: rowHash,
+      trainmap_import_status: row.status,
+      trainmap_import_row_number: row.rowNumber
+    }
+  };
+}
+
+export function buildImportCommitInput(
+  preview: ImportPreview,
+  sourceName: string,
+  existingRowHashes = new Set<string>()
+): CommitImportInput {
+  return {
+    sourceName,
+    format: "viaduct_csv",
+    rows: preview.rows.map((row) => {
+      const rowHash = importRowFingerprint(row);
+      const tripInput = existingRowHashes.has(rowHash) ? null : previewRowToTripInput(row, rowHash);
+
+      return {
+        rowNumber: row.rowNumber,
+        raw: row.raw,
+        normalized: {
+          ...row.normalized,
+          from_station_id: row.fromStation.station?.id,
+          from_station_match_status: row.fromStation.status,
+          from_station_match_score: row.fromStation.score,
+          to_station_id: row.toStation.station?.id,
+          to_station_match_status: row.toStation.status,
+          to_station_match_score: row.toStation.score,
+          trainmap_import_row_hash: rowHash,
+          trainmap_duplicate: existingRowHashes.has(rowHash)
+        },
+        status: row.status as ImportRow["status"],
+        messages: row.messages,
+        rowHash,
+        tripInput: tripInput ?? undefined
+      };
+    })
+  };
+}
+
 function previewRow(
   rowNumber: number,
   raw: Record<string, string>,
@@ -134,7 +229,7 @@ function previewRow(
   stations: Station[]
 ): ImportPreviewRow {
   const normalized = Object.fromEntries(
-    (Object.keys(headerHints) as ImportField[]).map((field) => [field, valueFor(raw, mapping[field])])
+    importFields.map((field) => [field, valueFor(raw, mapping[field])])
   ) as Record<ImportField, string>;
   const messages: string[] = [];
   const fromStation = matchStation(normalized.from_station_name, stations);
@@ -142,6 +237,17 @@ function previewRow(
 
   if (!normalized.departure_date) {
     messages.push("Missing departure date.");
+  } else if (!isIsoDate(normalized.departure_date)) {
+    messages.push(`Invalid departure date: ${normalized.departure_date}.`);
+  }
+  if (normalized.arrival_date && !isIsoDate(normalized.arrival_date)) {
+    messages.push(`Invalid arrival date: ${normalized.arrival_date}.`);
+  }
+  if (normalized.departure_time && !isTime(normalized.departure_time)) {
+    messages.push(`Invalid departure time: ${normalized.departure_time}.`);
+  }
+  if (normalized.arrival_time && !isTime(normalized.arrival_time)) {
+    messages.push(`Invalid arrival time: ${normalized.arrival_time}.`);
   }
   if (fromStation.status === "unmatched") {
     messages.push(`Origin station not matched: ${normalized.from_station_name || "empty"}.`);
@@ -168,7 +274,7 @@ function resolveStatus(
   fromStatus: StationMatch["status"],
   toStatus: StationMatch["status"]
 ): ImportPreviewRow["status"] {
-  if (messages.some((message) => message.startsWith("Missing"))) {
+  if (messages.some((message) => message.startsWith("Missing") || message.startsWith("Invalid") || message.startsWith("Malformed") || message.includes("columns"))) {
     return "invalid";
   }
   if (fromStatus === "unmatched" || toStatus === "unmatched") {
@@ -181,7 +287,30 @@ function resolveStatus(
 }
 
 function valueFor(row: Record<string, string>, header?: string): string {
-  return header ? row[header] ?? "" : "";
+  return header ? cleanCell(row[header] ?? "") : "";
+}
+
+function stationToStop(
+  station: Station,
+  sequence: number,
+  matchStatus: StationMatch["status"],
+  timestamp?: string
+): TripStopInput {
+  return {
+    stationId: station.id,
+    stationName: station.name,
+    countryCode: station.countryCode,
+    coordinates: station.coordinates,
+    sequence,
+    departureAt: sequence === 1 ? timestamp : undefined,
+    arrivalAt: sequence === 2 ? timestamp : undefined,
+    source: "import",
+    confidence: matchStatus === "fuzzy" ? "fuzzy" : "matched"
+  };
+}
+
+function cleanCell(value: string): string {
+  return value.replace(/\uFFFD/g, "").replace(/\u00A0/g, " ").trim();
 }
 
 function normalizeText(value: string): string {
@@ -191,6 +320,46 @@ function normalizeText(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
+}
+
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function isTime(value: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value);
+}
+
+function combineDateTime(date: string, time: string): string | undefined {
+  if (!date || !time || !isIsoDate(date) || !isTime(time)) {
+    return undefined;
+  }
+  return `${date}T${time.length === 5 ? `${time}:00` : time}`;
+}
+
+function parseDistance(value: string): number {
+  if (!value) {
+    return 0;
+  }
+  const parsed = Number(value.replace(",", ".").replace(/[^0-9.]+/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortRecord(record: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(record).sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function stableHash(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `fnv1a_${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 function similarity(left: string, right: string): number {

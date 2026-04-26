@@ -12,7 +12,12 @@
     "lint": "npm run lint --workspaces --if-present",
     "test": "vitest run",
     "build": "npm run build --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:migrate": "node scripts/run-migrations.mjs db/migrations",
+    "db:migrate:initial": "node scripts/run-sql.mjs db/migrations/001_initial.sql",
+    "db:migrate:exports": "node scripts/run-sql.mjs db/migrations/002_export_error_message.sql",
+    "db:seed": "node scripts/run-sql.mjs db/seeds/demo.sql",
+    "playwright:install": "npx playwright install chromium"
   },
   "devDependencies": {
     "@types/node": "^20.17.10",

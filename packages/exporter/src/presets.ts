@@ -1,6 +1,7 @@
-export type ExportPresetId = "1080p" | "2k" | "4k" | "8k";
+export type ExportPresetId = "1080p" | "2k" | "4k";
 export type ExportLayout = "map-only" | "stats-only" | "poster";
 export type ExportTheme = "light" | "dark";
+export type ExportJobType = "map" | "stats" | "poster";
 
 export interface ExportPreset {
   id: ExportPresetId;
@@ -22,23 +23,35 @@ export interface ExportConfig {
 export const exportPresets: ExportPreset[] = [
   { id: "1080p", label: "1080p", width: 1920, height: 1080 },
   { id: "2k", label: "2K", width: 2560, height: 1440 },
-  { id: "4k", label: "4K", width: 3840, height: 2160 },
-  { id: "8k", label: "8K", width: 7680, height: 4320 }
+  { id: "4k", label: "4K", width: 3840, height: 2160 }
 ];
+
+export function getExportPresetById(presetId: string): ExportPreset {
+  const preset = exportPresets.find((candidate) => candidate.id === presetId);
+  if (!preset) {
+    throw new Error(`Unsupported export preset: ${presetId}`);
+  }
+  return preset;
+}
+
+export function getExportPresetByDimensions(width: number, height: number): ExportPreset {
+  const preset = exportPresets.find((candidate) => candidate.width === width && candidate.height === height);
+  if (!preset) {
+    throw new Error(`Unsupported export dimensions: ${width}x${height}`);
+  }
+  return preset;
+}
 
 export function createExportConfig(input: {
   layout: ExportLayout;
-  presetId: ExportPresetId;
+  presetId: string;
   theme: ExportTheme;
   title?: string;
   subtitle?: string;
   includeLegend?: boolean;
   includeAttribution?: boolean;
 }): ExportConfig {
-  const preset = exportPresets.find((candidate) => candidate.id === input.presetId);
-  if (!preset) {
-    throw new Error(`Unknown export preset: ${input.presetId}`);
-  }
+  const preset = getExportPresetById(input.presetId);
 
   return {
     layout: input.layout,
@@ -68,10 +81,38 @@ export function buildExportRoute(config: ExportConfig): string {
   return `/export/render?${params.toString()}`;
 }
 
+export function buildExportRenderUrl(config: ExportConfig, baseUrl: string): string {
+  return new URL(buildExportRoute(config), withTrailingSlash(baseUrl)).toString();
+}
+
+export function exportLayoutToJobType(layout: ExportLayout): ExportJobType {
+  if (layout === "map-only") {
+    return "map";
+  }
+  if (layout === "stats-only") {
+    return "stats";
+  }
+  return "poster";
+}
+
+export function exportJobTypeToLayout(type: ExportJobType): ExportLayout {
+  if (type === "map") {
+    return "map-only";
+  }
+  if (type === "stats") {
+    return "stats-only";
+  }
+  return "poster";
+}
+
 export function getViewportStyle(config: ExportConfig): { width: string; height: string; aspectRatio: string } {
   return {
     width: `${config.preset.width}px`,
     height: `${config.preset.height}px`,
     aspectRatio: `${config.preset.width} / ${config.preset.height}`
   };
+}
+
+function withTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value : `${value}/`;
 }

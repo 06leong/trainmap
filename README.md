@@ -8,6 +8,7 @@ Self-hosted personal railway footprint platform inspired by the product scope of
 - TypeScript workspace packages for domain types, route generation, CSV import, export presets, UI utilities, and timetable adapters
 - MapLibre GL JS map with independent business route, station, label, and coverage-ready layers
 - Trip dashboard, full map, trip list, trip detail, manual route repair, station search, CSV import wizard, schedule-assisted trip draft, share view, and export designer pages
+- PNG export presets are limited to 1080p (1920x1080), 2K (2560x1440), and 4K (3840x2160)
 - PostGIS-first schema covering stations, aliases, operators, journeys, tags, trips, segments, stops, geometries, geometry versions, imports, import rows, saved views, and exports
 - Dockerfile and Docker Compose deployment for an existing reverse proxy network, with no nginx inside the stack
 
@@ -15,10 +16,48 @@ Self-hosted personal railway footprint platform inspired by the product scope of
 
 ```bash
 npm install
+npm run playwright:install
+cp .env.example .env.local
 npm run dev
 ```
 
-The app binds to `0.0.0.0:3000` for local testing.
+The app binds to `0.0.0.0:3000` for local testing. The runtime app reads trips, stations, route geometry, imports, saved views, and exports from PostgreSQL/PostGIS. If `DATABASE_URL` is missing, pages show a setup notice instead of falling back to hardcoded trips.
+
+### Local database
+
+Start a local PostGIS database:
+
+```bash
+docker run --name trainmap-postgis \
+  -e POSTGRES_DB=trainmap \
+  -e POSTGRES_USER=trainmap \
+  -e POSTGRES_PASSWORD=trainmap \
+  -p 5432:5432 \
+  -d postgis/postgis:16-3.4
+```
+
+Set the required database environment variable:
+
+```bash
+export DATABASE_URL=postgres://trainmap:trainmap@localhost:5432/trainmap
+```
+
+Then apply the schema and optional demo seed:
+
+```bash
+npm run db:migrate
+npm run db:seed
+```
+
+Required runtime environment variables:
+
+- `DATABASE_URL`: PostgreSQL/PostGIS connection string.
+- `NEXT_PUBLIC_APP_URL`: canonical public app URL for share/export links.
+- `NEXT_PUBLIC_MAP_STYLE_LIGHT`: MapLibre-compatible light style URL.
+- `NEXT_PUBLIC_MAP_STYLE_DARK`: MapLibre-compatible dark style URL.
+- `TRAINMAP_INTERNAL_PORT`: internal app port, default `3000`.
+- `TRAINMAP_RENDER_BASE_URL`: internal URL Playwright uses to capture export render pages, default `http://127.0.0.1:3000`.
+- `TRAINMAP_EXPORT_DIR`: local directory for generated PNG exports, default `storage/exports`.
 
 Validation:
 
@@ -30,16 +69,45 @@ npm run build
 
 ## Docker image
 
-Build and publish a GHCR image from the repository root:
+GitHub Actions builds the production Docker image from the repository root and publishes it to GHCR on every push to `main`, or when you run the workflow manually:
 
 ```bash
-docker build -t ghcr.io/<owner>/trainmap:latest .
-docker push ghcr.io/<owner>/trainmap:latest
+ghcr.io/<owner>/trainmap:latest
+ghcr.io/<owner>/trainmap:0.1
+ghcr.io/<owner>/trainmap:<git-sha>
 ```
+
+The workflow is defined in `.github/workflows/docker-publish.yml` and uses the repository `GITHUB_TOKEN` with `packages: write`. The version tag is generated from the root `package.json` major/minor version, so the current `0.1.0` package version publishes `ghcr.io/<owner>/trainmap:0.1`. `latest` always points at the newest `main` build.
+
+After the first successful workflow run, open the package page in GitHub:
+
+1. Go to your repository page, then `Packages`, then `trainmap`.
+2. Open `Package settings`.
+3. Under visibility, choose whether the image should be public or private.
+4. If private, make sure the VPS can authenticate to GHCR with a token that has `read:packages`.
 
 ## Self-hosted deployment
 
-Copy `infra/compose/docker-compose.yml` to the server or deploy from a checkout.
+On a VPS, a simple layout is:
+
+```bash
+/home/docker/trainmap/
+  docker-compose.yml
+  .env
+  db/migrations/
+  db/seeds/
+  data/postgres/
+  data/exports/
+```
+
+Create the directories:
+
+```bash
+sudo mkdir -p /home/docker/trainmap/db/migrations /home/docker/trainmap/db/seeds /home/docker/trainmap/data/postgres /home/docker/trainmap/data/exports
+cd /home/docker/trainmap
+```
+
+Copy `infra/compose/docker-compose.yml` to `/home/docker/trainmap/docker-compose.yml`, and copy `db/migrations` plus optional `db/seeds` into `/home/docker/trainmap/db`. The PostGIS container runs SQL files from `db/migrations` on first database initialization.
 
 Create an `.env` next to the compose file:
 
@@ -53,15 +121,56 @@ NEXT_PUBLIC_APP_URL=https://trainmap.example.com
 NEXT_PUBLIC_MAP_STYLE_LIGHT=https://tiles.openfreemap.org/styles/bright
 NEXT_PUBLIC_MAP_STYLE_DARK=https://tiles.openfreemap.org/styles/liberty
 REVERSE_PROXY_NETWORK=proxy
+TRAINMAP_EXPORT_DIR=/app/storage/exports
+TRAINMAP_RENDER_BASE_URL=http://127.0.0.1:3000
+TRAINMAP_POSTGRES_DATA=./data/postgres
+TRAINMAP_EXPORTS_DATA=./data/exports
+TRAINMAP_MIGRATIONS_DIR=./db/migrations
+```
+
+Set `TRAINMAP_IMAGE` to the image published by GitHub Actions. For the latest `main` build use:
+
+```bash
+TRAINMAP_IMAGE=ghcr.io/<owner>/trainmap:latest
+```
+
+For a pinned deployment, use the SHA tag from the workflow run:
+
+```bash
+TRAINMAP_IMAGE=ghcr.io/<owner>/trainmap:<git-sha>
+```
+
+For the current version line, use:
+
+```bash
+TRAINMAP_IMAGE=ghcr.io/<owner>/trainmap:0.1
 ```
 
 Ensure your existing reverse proxy is attached to the external Docker network named by `REVERSE_PROXY_NETWORK`, then start:
 
 ```bash
-docker compose -f infra/compose/docker-compose.yml up -d
+cd /home/docker/trainmap
+docker compose up -d
 ```
 
 The app exposes only the internal service port to Docker networks. The stack intentionally does not include nginx.
+
+If the GHCR package is private, log in on the VPS before pulling:
+
+```bash
+echo "<github-token-with-read-packages>" | docker login ghcr.io -u <github-username> --password-stdin
+cd /home/docker/trainmap
+docker compose pull
+docker compose up -d
+```
+
+To load the optional demo seed into the running Docker database from a checkout:
+
+```bash
+cd /home/docker/trainmap
+docker compose exec -T postgres \
+  psql -U trainmap -d trainmap < db/seeds/demo.sql
+```
 
 ## Architecture notes
 
@@ -74,7 +183,7 @@ The app exposes only the internal service port to Docker networks. The stack int
 
 ## Current limitations
 
-- The web UI uses seeded demo data while PostGIS persistence is scaffolded.
-- PNG export has dedicated render pages and presets; the Playwright capture worker is a next step.
+- Runtime pages now require PostgreSQL/PostGIS persistence; without `DATABASE_URL`, the UI shows a setup notice and empty runtime data.
+- PNG export uses a simple in-process Playwright capture job for MVP; a queue can be added later if export volume grows.
 - Timetable adapters are typed static adapters until real provider credentials and feed ingestion are configured.
 - Route generation currently creates inferred/manual GeoJSON from stop sequences and vias; exact railway track matching is future work.

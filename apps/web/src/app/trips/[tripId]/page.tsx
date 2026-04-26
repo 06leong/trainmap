@@ -1,19 +1,40 @@
 import { notFound } from "next/navigation";
-import { demoTrips } from "@trainmap/domain";
+import { DatabaseSetupNotice } from "@/components/database-setup-notice";
 import { PageHeader } from "@/components/page-header";
 import { RouteEditor } from "@/components/route-editor";
 import { StatusPill } from "@/components/status-pill";
+import { TripEditForm } from "@/components/trip-form";
+import { repairTripGeometryAction } from "@/lib/actions/geometry";
+import { updateTripAction } from "@/lib/actions/trips";
+import { getTrainmapRepository } from "@/lib/db";
 
-export function generateStaticParams() {
-  return demoTrips.map((trip) => ({ tripId: trip.id }));
-}
+export const dynamic = "force-dynamic";
 
-export default function TripDetailPage({ params }: { params: { tripId: string } }) {
-  const trip = demoTrips.find((candidate) => candidate.id === params.tripId);
+export default async function TripDetailPage({ params }: { params: { tripId: string } }) {
+  const repository = getTrainmapRepository();
+  if (!repository) {
+    return (
+      <div>
+        <PageHeader
+          eyebrow="Trip detail mode"
+          title="Database setup"
+          description="Trip details are loaded from PostgreSQL/PostGIS at runtime."
+        />
+        <div className="p-5 lg:p-8">
+          <DatabaseSetupNotice />
+        </div>
+      </div>
+    );
+  }
+
+  const trip = await repository.getTrip(params.tripId);
 
   if (!trip) {
     notFound();
   }
+
+  const saveTrip = updateTripAction.bind(null, trip.id);
+  const repairTrip = repairTripGeometryAction.bind(null, trip.id);
 
   return (
     <div>
@@ -35,7 +56,18 @@ export default function TripDetailPage({ params }: { params: { tripId: string } 
           <TripMeta label="Train" value={trip.trainCode ?? "Manual"} />
           <TripMeta label="Distance" value={`${trip.distanceKm.toLocaleString()} km`} />
         </section>
-        <RouteEditor trip={trip} />
+        <TripEditForm
+          tripId={trip.id}
+          title={trip.title}
+          date={trip.date}
+          operatorName={trip.operatorName}
+          trainCode={trip.trainCode}
+          distanceKm={trip.distanceKm}
+          status={trip.status}
+          serviceClass={trip.serviceClass}
+          action={saveTrip}
+        />
+        <RouteEditor trip={trip} repairAction={repairTrip} />
       </div>
     </div>
   );

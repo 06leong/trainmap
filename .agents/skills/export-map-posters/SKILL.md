@@ -11,7 +11,7 @@ Use this skill when:
 - a user wants map export
 - a user wants a poster summary
 - a user wants statistics export
-- export presets such as 1080p, 2K, 4K, or 8K are needed
+- export presets such as 1080p, 2K, or 4K are needed
 
 # When not to use
 Do not use this skill for:
@@ -24,7 +24,6 @@ Do not use this skill for:
 - 1920x1080
 - 2560x1440
 - 3840x2160
-- 7680x4320
 
 # Export types
 - map-only

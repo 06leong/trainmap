@@ -2,8 +2,17 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ExternalLink, ImageDown } from "lucide-react";
-import { buildExportRoute, createExportConfig, exportPresets, type ExportLayout, type ExportTheme } from "@trainmap/exporter";
+import { useFormState, useFormStatus } from "react-dom";
+import { Download, ExternalLink, ImageDown, Loader2 } from "lucide-react";
+import {
+  buildExportRoute,
+  createExportConfig,
+  exportPresets,
+  type ExportLayout,
+  type ExportPresetId,
+  type ExportTheme
+} from "@trainmap/exporter";
+import { createExportAction, type ExportActionState } from "@/lib/actions/exports";
 
 export function ExportDesigner() {
   const [layout, setLayout] = useState<ExportLayout>("poster");
@@ -11,11 +20,12 @@ export function ExportDesigner() {
   const [theme, setTheme] = useState<ExportTheme>("dark");
   const [title, setTitle] = useState("Alpine archive");
   const [subtitle, setSubtitle] = useState("Personal rail footprint, 2024-2026");
+  const [state, formAction] = useFormState<ExportActionState, FormData>(createExportAction, { status: "idle" });
   const config = useMemo(
     () =>
       createExportConfig({
         layout,
-        presetId: presetId as "1080p" | "2k" | "4k" | "8k",
+        presetId: presetId as ExportPresetId,
         theme,
         title,
         subtitle,
@@ -26,7 +36,15 @@ export function ExportDesigner() {
   );
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[380px_1fr]">
+    <form action={formAction} className="grid gap-5 xl:grid-cols-[380px_1fr]">
+      <input type="hidden" name="layout" value={layout} />
+      <input type="hidden" name="preset" value={config.preset.id} />
+      <input type="hidden" name="theme" value={theme} />
+      <input type="hidden" name="title" value={title} />
+      <input type="hidden" name="subtitle" value={subtitle} />
+      <input type="hidden" name="legend" value="true" />
+      <input type="hidden" name="attribution" value="true" />
+
       <section className="rounded-md border border-black/10 bg-white/72 p-4 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="rounded-md bg-brass p-2 text-white">
@@ -86,6 +104,8 @@ export function ExportDesigner() {
             <ExternalLink className="h-4 w-4" />
             Open render route
           </Link>
+          <ExportSubmitButton />
+          <ExportStatusPanel state={state} />
         </div>
       </section>
 
@@ -110,6 +130,57 @@ export function ExportDesigner() {
           </div>
         </div>
       </section>
+    </form>
+  );
+}
+
+function ExportSubmitButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-rail px-4 py-2.5 text-sm text-white disabled:opacity-45"
+    >
+      {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageDown className="h-4 w-4" />}
+      {pending ? "Rendering PNG" : "Generate PNG"}
+    </button>
+  );
+}
+
+function ExportStatusPanel({ state }: { state: ExportActionState }) {
+  const { pending } = useFormStatus();
+  const status = pending ? "rendering" : state.status === "idle" ? "queued" : state.status;
+  const label = status === "complete" ? "completed" : status;
+
+  return (
+    <div className="rounded-md border border-black/10 bg-[#f8f5ef] p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs uppercase text-black/45">Job status</div>
+          <div className="mt-1 font-medium capitalize text-ink">{label}</div>
+        </div>
+        <span
+          className={
+            status === "complete"
+              ? "rounded-full bg-emerald-50 px-2.5 py-1 text-xs text-emerald-800"
+              : status === "failed"
+                ? "rounded-full bg-rose-50 px-2.5 py-1 text-xs text-rose-800"
+                : "rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-800"
+          }
+        >
+          {label}
+        </span>
+      </div>
+      {state.message ? <p className="mt-2 text-sm text-black/62">{state.message}</p> : null}
+      {state.job?.outputPath ? <p className="mt-2 break-all text-xs text-black/45">{state.job.outputPath}</p> : null}
+      {state.downloadUrl ? (
+        <Link href={state.downloadUrl} className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-rail">
+          <Download className="h-4 w-4" />
+          Download PNG
+        </Link>
+      ) : null}
     </div>
   );
 }

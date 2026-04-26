@@ -7,12 +7,16 @@ services:
       HOSTNAME: 0.0.0.0
       PORT: ${TRAINMAP_INTERNAL_PORT:-3000}
       DATABASE_URL: postgres://${POSTGRES_USER:-trainmap}:${POSTGRES_PASSWORD:-trainmap}@postgres:5432/${POSTGRES_DB:-trainmap}
+      TRAINMAP_EXPORT_DIR: /app/storage/exports
+      TRAINMAP_RENDER_BASE_URL: http://127.0.0.1:${TRAINMAP_INTERNAL_PORT:-3000}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://trainmap.example.com}
       NEXT_PUBLIC_MAP_STYLE_LIGHT: ${NEXT_PUBLIC_MAP_STYLE_LIGHT:-https://tiles.openfreemap.org/styles/bright}
       NEXT_PUBLIC_MAP_STYLE_DARK: ${NEXT_PUBLIC_MAP_STYLE_DARK:-https://tiles.openfreemap.org/styles/liberty}
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ${TRAINMAP_EXPORTS_DATA:-./data/exports}:/app/storage/exports
     expose:
       - "${TRAINMAP_INTERNAL_PORT:-3000}"
     networks:
@@ -27,8 +31,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-trainmap}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trainmap}
     volumes:
-      - trainmap_postgres:/var/lib/postgresql/data
-      - ../../db/migrations:/docker-entrypoint-initdb.d:ro
+      - ${TRAINMAP_POSTGRES_DATA:-./data/postgres}:/var/lib/postgresql/data
+      - ${TRAINMAP_MIGRATIONS_DIR:-./db/migrations}:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trainmap} -d ${POSTGRES_DB:-trainmap}"]
       interval: 10s
@@ -36,9 +40,6 @@ services:
       retries: 5
     networks:
       - trainmap_internal
-
-volumes:
-  trainmap_postgres:
 
 networks:
   trainmap_internal:

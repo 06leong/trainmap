@@ -2,6 +2,7 @@
 .next
 node_modules
 coverage
+storage
 .env*
 npm-debug.log*
 trainmap_codex_bundle.md

@@ -6,7 +6,13 @@ import type { ManualViaPoint, Trip, TripStop } from "@trainmap/domain";
 import { regenerateRouteGeometry } from "@trainmap/geo";
 import { TransportMap } from "@/components/transport-map";
 
-export function RouteEditor({ trip }: { trip: Trip }) {
+export function RouteEditor({
+  trip,
+  repairAction
+}: {
+  trip: Trip;
+  repairAction: (formData: FormData) => Promise<void>;
+}) {
   const [stops, setStops] = useState<TripStop[]>(trip.stops);
   const [manualVias, setManualVias] = useState<ManualViaPoint[]>(trip.geometry?.manualViaPoints ?? []);
   const editedTrip = useMemo<Trip>(() => ({ ...trip, stops }), [stops, trip]);
@@ -21,7 +27,9 @@ export function RouteEditor({ trip }: { trip: Trip }) {
 
   return (
     <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-      <section className="rounded-md border border-black/10 bg-white/72 p-4 shadow-sm">
+      <form action={repairAction} className="rounded-md border border-black/10 bg-white/72 p-4 shadow-sm">
+        <input type="hidden" name="stopsJson" value={JSON.stringify(stops)} />
+        <input type="hidden" name="manualViasJson" value={JSON.stringify(manualVias)} />
         <div className="flex items-center gap-3">
           <div className="rounded-md bg-rail p-2 text-white">
             <GitBranchPlus className="h-4 w-4" />
@@ -147,7 +155,10 @@ export function RouteEditor({ trip }: { trip: Trip }) {
             </div>
           </div>
         </div>
-      </section>
+        <button type="submit" className="mt-5 rounded-md bg-rail px-4 py-2.5 text-sm text-white">
+          Save geometry version
+        </button>
+      </form>
       <TransportMap trips={[previewTrip]} heightClass="h-[680px]" />
     </div>
   );

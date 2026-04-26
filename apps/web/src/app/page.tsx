@@ -1,13 +1,19 @@
 import Link from "next/link";
 import { ArrowRight, ImageDown, MapPinned, Route, Upload } from "lucide-react";
-import { calculateTripStats, demoTrips } from "@trainmap/domain";
+import { calculateTripStats } from "@trainmap/domain";
+import { DatabaseSetupNotice } from "@/components/database-setup-notice";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { TransportMap } from "@/components/transport-map";
 import { TripTable } from "@/components/trip-table";
+import { getTrainmapRepository } from "@/lib/db";
 
-export default function OverviewPage() {
-  const stats = calculateTripStats(demoTrips);
+export const dynamic = "force-dynamic";
+
+export default async function OverviewPage() {
+  const repository = getTrainmapRepository();
+  const trips = repository ? await repository.listTrips() : [];
+  const stats = calculateTripStats(trips);
 
   return (
     <div>
@@ -24,6 +30,7 @@ export default function OverviewPage() {
       />
 
       <div className="space-y-6 p-5 lg:p-8">
+        {!repository ? <DatabaseSetupNotice /> : null}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatCard label="Trips" value={String(stats.totalTrips)} detail="Completed and reviewable journeys" />
           <StatCard label="Distance" value={`${stats.totalDistanceKm.toLocaleString()} km`} detail="Across stored route segments" />
@@ -32,7 +39,7 @@ export default function OverviewPage() {
         </div>
 
         <section className="grid gap-5 xl:grid-cols-[1.5fr_0.8fr]">
-          <TransportMap trips={demoTrips} />
+          <TransportMap trips={trips} />
           <div className="grid gap-4">
             {[
               {
@@ -50,7 +57,7 @@ export default function OverviewPage() {
               {
                 icon: ImageDown,
                 title: "Poster exports",
-                detail: "Dedicated render pages for 1080p, 2K, 4K, and 8K PNG output.",
+                detail: "Dedicated render pages for 1080p, 2K, and 4K PNG output.",
                 href: "/export"
               },
               {
@@ -72,7 +79,7 @@ export default function OverviewPage() {
           </div>
         </section>
 
-        <TripTable trips={demoTrips} />
+        <TripTable trips={trips} />
       </div>
     </div>
   );

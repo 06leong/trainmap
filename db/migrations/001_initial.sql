@@ -197,6 +197,7 @@ create table exports (
   render_url text,
   output_path text,
   status export_status not null default 'queued',
+  error_message text,
   created_at timestamptz not null default now(),
   completed_at timestamptz
 );

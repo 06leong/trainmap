@@ -1,4 +1,6 @@
-export const dynamic = "force-static";
+import { isDatabaseConfigured } from "@/lib/db/client";
+
+export const dynamic = "force-dynamic";
 
 export function GET() {
   return Response.json({
@@ -6,7 +8,7 @@ export function GET() {
     service: "trainmap",
     checks: {
       app: "ready",
-      database: "configure DATABASE_URL for PostGIS persistence"
+      database: isDatabaseConfigured() ? "configured" : "configure DATABASE_URL for PostGIS persistence"
     }
   });
 }

@@ -2,14 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
-import { demoStations, demoTrips } from "@trainmap/domain";
+import type { Station, Trip } from "@trainmap/domain";
 
-export function StationSearch() {
+export function StationSearch({ stations: allStations, trips }: { stations: Station[]; trips: Trip[] }) {
   const [query, setQuery] = useState("");
   const stations = useMemo(() => {
     const normalized = query.toLowerCase();
-    return demoStations.filter((station) => station.name.toLowerCase().includes(normalized));
-  }, [query]);
+    return allStations.filter((station) => station.name.toLowerCase().includes(normalized));
+  }, [allStations, query]);
 
   return (
     <section className="rounded-md border border-black/10 bg-white/72 shadow-sm">
@@ -30,7 +30,7 @@ export function StationSearch() {
       </div>
       <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
         {stations.map((station) => {
-          const visits = demoTrips.filter((trip) => trip.stops.some((stop) => stop.stationId === station.id)).length;
+          const visits = trips.filter((trip) => trip.stops.some((stop) => stop.stationId === station.id)).length;
           return (
             <article key={station.id} className="rounded-md border border-black/10 bg-[#f8f5ef] p-4">
               <div className="font-medium text-ink">{station.name}</div>

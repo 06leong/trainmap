@@ -1,10 +1,16 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { demoTrips } from "@trainmap/domain";
+import { DatabaseSetupNotice } from "@/components/database-setup-notice";
 import { PageHeader } from "@/components/page-header";
 import { TripTable } from "@/components/trip-table";
+import { getTrainmapRepository } from "@/lib/db";
 
-export default function TripsPage() {
+export const dynamic = "force-dynamic";
+
+export default async function TripsPage() {
+  const repository = getTrainmapRepository();
+  const trips = repository ? await repository.listTrips() : [];
+
   return (
     <div>
       <PageHeader
@@ -19,7 +25,8 @@ export default function TripsPage() {
         }
       />
       <div className="p-5 lg:p-8">
-        <TripTable trips={demoTrips} />
+        {!repository ? <DatabaseSetupNotice /> : null}
+        <TripTable trips={trips} />
       </div>
     </div>
   );

@@ -1,9 +1,15 @@
-import { demoTrips } from "@trainmap/domain";
+import { DatabaseSetupNotice } from "@/components/database-setup-notice";
 import { PageHeader } from "@/components/page-header";
 import { TransportMap } from "@/components/transport-map";
 import { TripTable } from "@/components/trip-table";
+import { getTrainmapRepository } from "@/lib/db";
 
-export default function SharePage({ params }: { params: { viewId: string } }) {
+export const dynamic = "force-dynamic";
+
+export default async function SharePage({ params }: { params: { viewId: string } }) {
+  const repository = getTrainmapRepository();
+  const trips = repository ? (await repository.listTrips()).filter((trip) => trip.countryCodes.includes("CH")) : [];
+
   return (
     <div>
       <PageHeader
@@ -12,8 +18,9 @@ export default function SharePage({ params }: { params: { viewId: string } }) {
         description={`Shared view ${params.viewId} exposes a curated filter set without exposing raw imports or private edit history.`}
       />
       <div className="space-y-5 p-5 lg:p-8">
-        <TransportMap trips={demoTrips.filter((trip) => trip.countryCodes.includes("CH"))} />
-        <TripTable trips={demoTrips.filter((trip) => trip.countryCodes.includes("CH"))} />
+        {!repository ? <DatabaseSetupNotice /> : null}
+        <TransportMap trips={trips} />
+        <TripTable trips={trips} />
       </div>
     </div>
   );

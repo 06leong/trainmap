@@ -1,12 +1,18 @@
-import { calculateTripStats, demoTrips } from "@trainmap/domain";
+import { calculateTripStats, type Trip } from "@trainmap/domain";
 import { createExportConfig, type ExportLayout, type ExportPresetId, type ExportTheme } from "@trainmap/exporter";
+import { DatabaseSetupNotice } from "@/components/database-setup-notice";
 import { TransportMap } from "@/components/transport-map";
+import { getTrainmapRepository } from "@/lib/db";
 
-export default function ExportRenderPage({
+export const dynamic = "force-dynamic";
+
+export default async function ExportRenderPage({
   searchParams
 }: {
   searchParams: Record<string, string | string[] | undefined>;
 }) {
+  const repository = getTrainmapRepository();
+  const trips = repository ? await repository.listTrips() : [];
   const config = createExportConfig({
     layout: value(searchParams.layout, "poster") as ExportLayout,
     presetId: value(searchParams.preset, "4k") as ExportPresetId,
@@ -16,23 +22,27 @@ export default function ExportRenderPage({
     includeLegend: value(searchParams.legend, "true") === "true",
     includeAttribution: value(searchParams.attribution, "true") === "true"
   });
-  const stats = calculateTripStats(demoTrips);
+  const stats = calculateTripStats(trips);
   const dark = config.theme === "dark";
 
   return (
-    <div className={dark ? "min-h-screen bg-[#111827] text-white" : "min-h-screen bg-[#f8f5ef] text-ink"}>
-      <div className="mx-auto max-w-[1400px] p-8">
+    <div
+      data-export-ready="true"
+      className={dark ? "overflow-hidden bg-[#111827] text-white" : "overflow-hidden bg-[#f8f5ef] text-ink"}
+      style={{ width: `${config.preset.width}px`, height: `${config.preset.height}px` }}
+    >
+      <div className="h-full p-8">
         <div
-          className={dark ? "border border-white/18 bg-[#111827] p-8" : "border border-black/10 bg-[#f8f5ef] p-8"}
-          style={{ aspectRatio: `${config.preset.width} / ${config.preset.height}` }}
+          className={dark ? "h-full border border-white/18 bg-[#111827] p-8" : "h-full border border-black/10 bg-[#f8f5ef] p-8"}
         >
+          {!repository ? <DatabaseSetupNotice /> : null}
           {config.layout === "stats-only" ? (
-            <StatsExport title={config.title} subtitle={config.subtitle} dark={dark} />
+            <StatsExport title={config.title} subtitle={config.subtitle} dark={dark} trips={trips} />
           ) : config.layout === "map-only" ? (
-            <TransportMap trips={demoTrips} showControls={false} heightClass="h-full" />
+            <TransportMap trips={trips} showControls={false} heightClass="h-full" />
           ) : (
             <div className="grid h-full gap-6 lg:grid-cols-[1.4fr_0.8fr]">
-              <TransportMap trips={demoTrips} showControls={false} heightClass="h-full" />
+              <TransportMap trips={trips} showControls={false} heightClass="h-full" />
               <div className="flex flex-col justify-between">
                 <div>
                   <div className="text-sm uppercase opacity-55">trainmap poster</div>
@@ -56,8 +66,8 @@ export default function ExportRenderPage({
   );
 }
 
-function StatsExport({ title, subtitle, dark }: { title: string; subtitle?: string; dark: boolean }) {
-  const stats = calculateTripStats(demoTrips);
+function StatsExport({ title, subtitle, dark, trips }: { title: string; subtitle?: string; dark: boolean; trips: Trip[] }) {
+  const stats = calculateTripStats(trips);
   return (
     <div className="flex h-full flex-col justify-between">
       <div>

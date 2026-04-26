@@ -64,7 +64,6 @@ The product should feel premium, map-first, editorial, and personal-archive-like
   - 1920x1080
   - 2560x1440
   - 3840x2160
-  - 7680x4320
 - Exports must support dark and light themes.
 
 ## Timetable/provider rules
