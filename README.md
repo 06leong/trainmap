@@ -77,14 +77,17 @@ ghcr.io/<owner>/trainmap:0.1
 ghcr.io/<owner>/trainmap:<git-sha>
 ```
 
-The workflow is defined in `.github/workflows/docker-publish.yml` and uses the repository `GITHUB_TOKEN` with `packages: write`. The version tag is generated from the root `package.json` major/minor version, so the current `0.1.0` package version publishes `ghcr.io/<owner>/trainmap:0.1`. `latest` always points at the newest `main` build.
+The workflow is defined in `.github/workflows/docker-publish.yml` and uses `GITHUB_TOKEN` with `packages: write` by default. If your repository or package permissions reject `GITHUB_TOKEN` with `write_package`, add a repository secret named `GHCR_TOKEN` containing a GitHub PAT with `write:packages` and `read:packages`. For private repositories, include `repo` on a classic PAT. The workflow prefers `GHCR_TOKEN` when present and falls back to `GITHUB_TOKEN`.
+
+The version tag is generated from the root `package.json` major/minor version, so the current `0.1.0` package version publishes `ghcr.io/<owner>/trainmap:0.1`. `latest` always points at the newest `main` build.
 
 After the first successful workflow run, open the package page in GitHub:
 
 1. Go to your repository page, then `Packages`, then `trainmap`.
 2. Open `Package settings`.
 3. Under visibility, choose whether the image should be public or private.
-4. If private, make sure the VPS can authenticate to GHCR with a token that has `read:packages`.
+4. If the package already existed before this repository published it, open `Manage Actions access` and grant `06leong/trainmap` write access.
+5. If private, make sure the VPS can authenticate to GHCR with a token that has `read:packages`.
 
 ## Self-hosted deployment
 
