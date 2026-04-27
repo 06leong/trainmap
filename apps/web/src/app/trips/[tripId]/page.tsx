@@ -4,9 +4,10 @@ import { PageHeader } from "@/components/page-header";
 import { RouteEditor } from "@/components/route-editor";
 import { StatusPill } from "@/components/status-pill";
 import { TripEditForm } from "@/components/trip-form";
-import { repairTripGeometryAction } from "@/lib/actions/geometry";
+import { refineTripGeometryWithSwissOpenDataAction, repairTripGeometryAction } from "@/lib/actions/geometry";
 import { updateTripAction } from "@/lib/actions/trips";
 import { getTrainmapRepository } from "@/lib/db";
+import { isSwissOpenDataConfigured } from "@/lib/providers/swiss-open-data";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export default async function TripDetailPage({ params }: { params: { tripId: str
 
   const saveTrip = updateTripAction.bind(null, trip.id);
   const repairTrip = repairTripGeometryAction.bind(null, trip.id);
+  const refineWithSwissOpenData = refineTripGeometryWithSwissOpenDataAction.bind(null, trip.id);
 
   return (
     <div>
@@ -67,7 +69,12 @@ export default async function TripDetailPage({ params }: { params: { tripId: str
           serviceClass={trip.serviceClass}
           action={saveTrip}
         />
-        <RouteEditor trip={trip} repairAction={repairTrip} />
+        <RouteEditor
+          trip={trip}
+          repairAction={repairTrip}
+          refineWithSwissOpenDataAction={refineWithSwissOpenData}
+          swissOpenDataConfigured={isSwissOpenDataConfigured()}
+        />
       </div>
     </div>
   );

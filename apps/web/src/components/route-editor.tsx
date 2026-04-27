@@ -1,17 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { GitBranchPlus, MapPinned, Minus, Plus } from "lucide-react";
+import { GitBranchPlus, MapPinned, Minus, Plus, RefreshCw } from "lucide-react";
 import type { ManualViaPoint, Trip, TripStop } from "@trainmap/domain";
 import { regenerateRouteGeometry } from "@trainmap/geo";
 import { TransportMap } from "@/components/transport-map";
 
 export function RouteEditor({
   trip,
-  repairAction
+  repairAction,
+  refineWithSwissOpenDataAction,
+  swissOpenDataConfigured
 }: {
   trip: Trip;
   repairAction: (formData: FormData) => Promise<void>;
+  refineWithSwissOpenDataAction: (formData: FormData) => Promise<void>;
+  swissOpenDataConfigured: boolean;
 }) {
   const [stops, setStops] = useState<TripStop[]>(trip.stops);
   const [manualVias, setManualVias] = useState<ManualViaPoint[]>(trip.geometry?.manualViaPoints ?? []);
@@ -155,9 +159,23 @@ export function RouteEditor({
             </div>
           </div>
         </div>
-        <button type="submit" className="mt-5 rounded-md bg-rail px-4 py-2.5 text-sm text-white">
-          Save geometry version
-        </button>
+        <div className="mt-5 grid gap-2 md:grid-cols-2">
+          <button type="submit" className="rounded-md bg-rail px-4 py-2.5 text-sm text-white">
+            Save geometry version
+          </button>
+          <button
+            type="submit"
+            formAction={refineWithSwissOpenDataAction}
+            disabled={!swissOpenDataConfigured}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-ink px-4 py-2.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Swiss OJP refine
+          </button>
+        </div>
+        {!swissOpenDataConfigured ? (
+          <p className="mt-2 text-xs text-black/48">Set SWISS_OPEN_DATA_API_KEY to enable provider route refinement.</p>
+        ) : null}
       </form>
       <TransportMap trips={[previewTrip]} heightClass="h-[680px]" />
     </div>

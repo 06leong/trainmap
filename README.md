@@ -58,6 +58,10 @@ Required runtime environment variables:
 - `TRAINMAP_INTERNAL_PORT`: internal app port, default `3000`.
 - `TRAINMAP_RENDER_BASE_URL`: internal URL Playwright uses to capture export render pages, default `http://127.0.0.1:3000`.
 - `TRAINMAP_EXPORT_DIR`: local directory for generated PNG exports, default `storage/exports`.
+- `SWISS_OPEN_DATA_API_KEY`: optional opentransportdata.swiss API Manager token used for Swiss Open Data OJP route refinement.
+- `SWISS_OPEN_DATA_OJP_ENDPOINT`: optional OJP endpoint override, default `https://api.opentransportdata.swiss/ojp20`.
+- `SWISS_OPEN_DATA_REQUESTOR_REF`: optional OJP requestor reference, default `trainmap_prod` in the app. Use a suffix such as `_test`, `_int`, or `_prod`.
+- `SWISS_OPEN_DATA_USER_AGENT`: optional User-Agent for Swiss Open Data API calls, default `trainmap/0.1`.
 
 Validation:
 
@@ -116,6 +120,7 @@ Edit `/home/docker/trainmap/docker-compose.yml` before starting:
 - `app.environment.DATABASE_URL`: replace `change-me` with a strong password.
 - `postgres.environment.POSTGRES_PASSWORD`: use the same strong password as `DATABASE_URL`.
 - `app.environment.NEXT_PUBLIC_APP_URL`: set your public domain, for example `https://trainmap.example.com`.
+- `app.environment.SWISS_OPEN_DATA_API_KEY`: optional. Set this after creating an API Manager token to enable Swiss OJP route refinement from trip detail pages.
 - `app.ports`: the default is `172.18.0.1:4396:3000` for Nginx Proxy Manager upstream `http://172.18.0.1:4396`. Change the gateway IP or host port if your VPS uses different values.
 
 The compose file stores PostgreSQL data under `./data` and PNG exports in a Docker-managed named volume:
@@ -166,6 +171,7 @@ docker compose exec -T postgres \
 - Route, station, label, saved view, and export data are trainmap business layers.
 - Stop sequence is the canonical route backbone.
 - `@trainmap/geo` provides `getRoute(...)`, `loadConnectionsOrSetManualVias(...)`, route confidence, fitBounds helpers, and geometry version creation.
+- Swiss Open Data OJP 2.0 can refine existing trip geometries with provider stop sequences and leg projection / track section coordinates when `SWISS_OPEN_DATA_API_KEY` is configured.
 - CSV import preserves raw rows and separates matched, fuzzy matched, unmatched, and invalid rows.
 - Timetable adapters expose stable provider contracts for `swiss_open_data`, `db_api`, `ns_api`, and `generic_gtfs`.
 
@@ -173,5 +179,5 @@ docker compose exec -T postgres \
 
 - Runtime pages now require PostgreSQL/PostGIS persistence; without `DATABASE_URL`, the UI shows a setup notice and empty runtime data.
 - PNG export uses a simple in-process Playwright capture job for MVP; a queue can be added later if export volume grows.
-- Timetable adapters are typed static adapters until real provider credentials and feed ingestion are configured.
-- Route generation currently creates inferred/manual GeoJSON from stop sequences and vias; exact railway track matching is future work.
+- Timetable adapters are still static in the client-side schedule assistant until provider-backed trip creation is moved behind server actions.
+- Route generation creates inferred/manual GeoJSON by default, and can create provider/exact geometry through Swiss Open Data OJP when credentials are configured. Exact coverage depends on the upstream OJP response returning usable projection or track coordinates.

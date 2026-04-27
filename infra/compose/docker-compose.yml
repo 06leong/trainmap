@@ -20,6 +20,13 @@ services:
       # MapLibre-compatible style URLs. Replace with your own MapTiler/OpenMapTiles styles if needed.
       NEXT_PUBLIC_MAP_STYLE_LIGHT: https://tiles.openfreemap.org/styles/bright
       NEXT_PUBLIC_MAP_STYLE_DARK: https://tiles.openfreemap.org/styles/liberty
+
+      # Optional: enable Swiss Open Data OJP 2.0 route refinement from trip detail pages.
+      # Get a token from https://api-manager.opentransportdata.swiss after registering an app.
+      # SWISS_OPEN_DATA_API_KEY: replace-with-token
+      SWISS_OPEN_DATA_OJP_ENDPOINT: https://api.opentransportdata.swiss/ojp20
+      SWISS_OPEN_DATA_REQUESTOR_REF: trainmap_prod
+      SWISS_OPEN_DATA_USER_AGENT: trainmap/0.1
     depends_on:
       postgres:
         condition: service_healthy

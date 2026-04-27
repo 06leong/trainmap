@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { ManualViaPoint, TripStopInput } from "@trainmap/domain";
 import { repairTripWithManualGeometry } from "@trainmap/domain";
 import { getRequiredTrainmapRepository } from "@/lib/db";
+import { refineTripWithSwissOpenData } from "@/lib/providers/swiss-open-data";
 
 export async function repairTripGeometryAction(tripId: string, formData: FormData) {
   const repository = getRequiredTrainmapRepository();
@@ -16,6 +17,36 @@ export async function repairTripGeometryAction(tripId: string, formData: FormDat
     manualViaPoints,
     createdBy: "user",
     changeSummary: "Manual route repair"
+  });
+
+  revalidatePath("/");
+  revalidatePath("/map");
+  revalidatePath("/trips");
+  revalidatePath(`/trips/${tripId}`);
+}
+
+export async function refineTripGeometryWithSwissOpenDataAction(tripId: string, _formData?: FormData) {
+  const repository = getRequiredTrainmapRepository();
+  const trip = await repository.getTrip(tripId);
+  if (!trip) {
+    throw new Error(`Trip ${tripId} does not exist.`);
+  }
+
+  const refinement = await refineTripWithSwissOpenData(trip);
+  await repository.replaceTripStops(tripId, refinement.stops);
+  await repository.createTripGeometry({
+    tripId,
+    source: "provider",
+    confidence: "exact",
+    geometry: refinement.geometry,
+    manualViaPoints: [],
+    notes: refinement.notes,
+    createdBy: "swiss_open_data",
+    changeSummary: "Swiss Open Data OJP route refinement",
+    parentGeometryId: trip.geometry?.id
+  });
+  await repository.updateTrip(tripId, {
+    distanceKm: refinement.distanceKm
   });
 
   revalidatePath("/");
