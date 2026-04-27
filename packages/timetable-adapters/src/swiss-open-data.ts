@@ -13,6 +13,18 @@ export interface SwissOpenDataRouteOption extends TimetableTripOption {
   geometry?: LineStringGeometry;
   stops: TripStop[];
   rawResultId: string;
+  services: SwissOpenDataServiceSummary[];
+}
+
+export interface SwissOpenDataServiceSummary {
+  trainCode: string;
+  operatorName?: string;
+  journeyRef?: string;
+  lineRef?: string;
+  originText?: string;
+  destinationText?: string;
+  departureAt?: string;
+  arrivalAt?: string;
 }
 
 export interface SwissOpenDataPlace {
@@ -213,7 +225,7 @@ export function parseSwissOjpLocationInformationResponse(xml: string): StationSe
 
     results.push({
       id,
-      name: textContent(nearbyXml, "LocationName") ?? stopPlaceName ?? id,
+      name: textContent(nearbyXml, "LocationName") ?? textContent(nearbyXml, "Name") ?? stopPlaceName ?? id,
       countryCode: countryCodeFromRef(id),
       coordinates
     });
@@ -238,8 +250,12 @@ function routeOptionFromTripResult(
 ): SwissOpenDataRouteOption | null {
   const rawResultId = textContent(tripResult, "ResultId") ?? textContent(tripResult, "TripId") ?? `ojp-result-${index + 1}`;
   const timedLegs = blocks(tripResult, "TimedLeg");
-  const stops = timedLegs.flatMap((timedLeg) => parseTimedLegStops(timedLeg, locationsByRef));
+  const services = timedLegs.map(parseTimedLegService).filter((service): service is SwissOpenDataServiceSummary => service !== null);
+  const stops = mergeTransferStops(timedLegs.flatMap((timedLeg) => parseTimedLegStops(timedLeg, locationsByRef)));
   const geometry = geometryFromTripResult(tripResult, stops);
+  const transferCount = transferCountFromTripResult(tripResult, timedLegs.length);
+  const trainCode = trainCodeFromServices(services) ?? trainCodeFromTripResult(tripResult);
+  const operatorName = operatorNameFromServices(services) ?? textContent(tripResult, "OperatorName") ?? "Unknown operator";
 
   if (stops.length < 2 && !geometry) {
     return null;
@@ -252,13 +268,17 @@ function routeOptionFromTripResult(
     id: rawResultId,
     rawResultId,
     providerId: "swiss_open_data",
-    trainCode: trainCodeFromTripResult(tripResult),
-    operatorName: textContent(tripResult, "OperatorName") ?? "Swiss Open Data",
+    trainCode,
+    operatorName,
     departureAt: textContent(tripResult, "StartTime") ?? firstStop?.departureAt ?? "",
     arrivalAt: textContent(tripResult, "EndTime") ?? lastStop?.arrivalAt ?? "",
     origin: firstStop?.stationName ?? "Origin",
     destination: lastStop?.stationName ?? "Destination",
     stopCount: stops.length,
+    transferCount,
+    legCount: timedLegs.length,
+    serviceSummary: serviceSummary(services, transferCount),
+    services,
     stops,
     geometry
   };
@@ -267,6 +287,7 @@ function routeOptionFromTripResult(
 function parseTimedLegStops(timedLeg: string, locationsByRef: Map<string, ParsedLocation>): TripStop[] {
   const stopBlocks = [
     ...blocks(timedLeg, "LegBoard"),
+    ...blocks(timedLeg, "LegIntermediate"),
     ...blocks(timedLeg, "LegIntermediates"),
     ...blocks(timedLeg, "LegAlight")
   ];
@@ -282,7 +303,8 @@ function parseTimedLegStops(timedLeg: string, locationsByRef: Map<string, Parsed
     }
 
     const sequence = Number(textContent(block, "Order")) || deduped.size + 1;
-    const name = textContent(block, "StopPointName") ?? textContent(block, "LocationName") ?? location?.name ?? ref ?? "Unknown stop";
+    const name =
+      textContent(block, "StopPointName") ?? textContent(block, "LocationName") ?? textContent(block, "Name") ?? location?.name ?? ref ?? "Unknown stop";
     const stationId = ref ?? `swiss-open-data-stop-${sequence}`;
     const key = `${stationId}-${sequence}`;
 
@@ -293,14 +315,120 @@ function parseTimedLegStops(timedLeg: string, locationsByRef: Map<string, Parsed
       countryCode: countryCodeFromRef(stationId),
       coordinates,
       sequence,
-      arrivalAt: textContent(block, "ServiceArrival") ?? undefined,
-      departureAt: textContent(block, "ServiceDeparture") ?? undefined,
+      arrivalAt: serviceTime(block, "ServiceArrival"),
+      departureAt: serviceTime(block, "ServiceDeparture"),
       source: "provider",
       confidence: "matched"
     });
   }
 
   return [...deduped.values()].sort((a, b) => a.sequence - b.sequence).map((stop, index) => ({ ...stop, sequence: index + 1 }));
+}
+
+function parseTimedLegService(timedLeg: string): SwissOpenDataServiceSummary | null {
+  const service = blocks(timedLeg, "Service")[0];
+  if (!service) {
+    return null;
+  }
+
+  const trainCode = serviceTrainCode(service);
+  const operatorName = textContent(service, "OperatorName") ?? operatorRefLabel(textContent(service, "OperatorRef"));
+  const firstStop = blocks(timedLeg, "LegBoard")[0];
+  const lastStop = blocks(timedLeg, "LegAlight")[0];
+
+  if (!trainCode && !operatorName) {
+    return null;
+  }
+
+  return {
+    trainCode: trainCode ?? "Unknown service",
+    operatorName: operatorName ?? undefined,
+    journeyRef: textContent(service, "JourneyRef") ?? undefined,
+    lineRef: textContent(service, "LineRef") ?? undefined,
+    originText: textContent(service, "OriginText") ?? undefined,
+    destinationText: textContent(service, "DestinationText") ?? undefined,
+    departureAt: firstStop ? serviceTime(firstStop, "ServiceDeparture") : undefined,
+    arrivalAt: lastStop ? serviceTime(lastStop, "ServiceArrival") : undefined
+  };
+}
+
+function mergeTransferStops(stops: TripStop[]): TripStop[] {
+  const sortedStops = [...stops].sort((a, b) => a.sequence - b.sequence);
+  const merged: TripStop[] = [];
+
+  for (const stop of sortedStops) {
+    const previous = merged[merged.length - 1];
+    if (previous && samePhysicalStation(previous, stop)) {
+      merged[merged.length - 1] = {
+        ...previous,
+        stationId: stableStationId(previous.stationId, stop.stationId),
+        arrivalAt: previous.arrivalAt ?? stop.arrivalAt,
+        departureAt: stop.departureAt ?? previous.departureAt,
+        coordinates: previous.coordinates ?? stop.coordinates
+      };
+      continue;
+    }
+
+    merged.push({ ...stop });
+  }
+
+  return merged.map((stop, index) => ({
+    ...stop,
+    id: `${stop.id.replace(/-\d+$/g, "")}-${index + 1}`,
+    sequence: index + 1
+  }));
+}
+
+function samePhysicalStation(left: TripStop, right: TripStop): boolean {
+  const leftKey = stopPlaceKey(left.stationId);
+  const rightKey = stopPlaceKey(right.stationId);
+  if (leftKey && rightKey && leftKey === rightKey) {
+    return true;
+  }
+
+  return normalizeName(left.stationName) === normalizeName(right.stationName) && coordinatesClose(left.coordinates, right.coordinates);
+}
+
+function stopPlaceKey(stationId: string): string | null {
+  const swissSloid = stationId.match(/^(ch:\d+:sloid:\d+)/i);
+  if (swissSloid) {
+    return swissSloid[1].toLowerCase();
+  }
+  if (/^\d{7}$/.test(stationId)) {
+    return stationId;
+  }
+  return null;
+}
+
+function stableStationId(left: string, right: string): string {
+  const leftKey = stopPlaceKey(left);
+  const rightKey = stopPlaceKey(right);
+  if (leftKey && leftKey === rightKey) {
+    return leftKey;
+  }
+  return left || right;
+}
+
+function coordinatesClose(left: Coordinate, right: Coordinate): boolean {
+  return Math.abs(left[0] - right[0]) < 0.002 && Math.abs(left[1] - right[1]) < 0.002;
+}
+
+function normalizeName(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function serviceTime(block: string, serviceElement: "ServiceArrival" | "ServiceDeparture"): string | undefined {
+  const serviceBlock = blocks(block, serviceElement)[0];
+  if (!serviceBlock) {
+    return undefined;
+  }
+
+  return textContent(serviceBlock, "TimetabledTime") ?? textContent(serviceBlock, "EstimatedTime") ?? undefined;
 }
 
 function geometryFromTripResult(tripResult: string, stops: TripStop[]): LineStringGeometry | undefined {
@@ -331,7 +459,7 @@ function parseLocationContext(xml: string): Map<string, ParsedLocation> {
 
     locations.set(ref, {
       ref,
-      name: textContent(locationBlock, "LocationName") ?? textContent(locationBlock, "StopPlaceName") ?? ref,
+      name: textContent(locationBlock, "LocationName") ?? textContent(locationBlock, "StopPlaceName") ?? textContent(locationBlock, "Name") ?? ref,
       coordinates
     });
   }
@@ -405,10 +533,71 @@ function placeRefXml(place: SwissOpenDataPlace): string {
 }
 
 function trainCodeFromTripResult(tripResult: string): string {
-  const lineName = textContent(tripResult, "PublishedLineName");
-  const journeyNumber = textContent(tripResult, "PublishedJourneyNumber");
+  const lineName = textContent(tripResult, "PublishedServiceName") ?? textContent(tripResult, "PublishedLineName");
+  const journeyNumber =
+    textContent(tripResult, "PublishedJourneyNumber") ?? textContent(tripResult, "TrainNumber") ?? textContent(tripResult, "PublicCode");
 
-  return [lineName, journeyNumber].filter(Boolean).join(" ") || "OJP";
+  return combineServiceCode(lineName, journeyNumber) ?? "Unknown service";
+}
+
+function trainCodeFromServices(services: SwissOpenDataServiceSummary[]): string | null {
+  const codes = uniqueValues(services.map((service) => service.trainCode).filter((code) => code !== "Unknown service"));
+  if (codes.length === 0) {
+    return null;
+  }
+  return codes.join(" + ");
+}
+
+function operatorNameFromServices(services: SwissOpenDataServiceSummary[]): string | null {
+  const operators = uniqueValues(services.map((service) => service.operatorName).filter((value): value is string => Boolean(value)));
+  if (operators.length === 0) {
+    return null;
+  }
+  return operators.join(" + ");
+}
+
+function serviceSummary(services: SwissOpenDataServiceSummary[], transferCount: number): string {
+  const directness = transferCount === 0 ? "Direct" : `${transferCount} transfer${transferCount === 1 ? "" : "s"}`;
+  const codes = trainCodeFromServices(services);
+  return codes ? `${directness} | ${codes}` : directness;
+}
+
+function serviceTrainCode(service: string): string | null {
+  const lineName =
+    textContent(service, "PublishedServiceName") ??
+    textContent(service, "PublishedLineName") ??
+    textContent(service, "PublicCode") ??
+    textContent(blocks(service, "ProductCategory")[0] ?? "", "ShortName") ??
+    textContent(blocks(service, "Mode")[0] ?? "", "ShortName");
+  const journeyNumber = textContent(service, "PublishedJourneyNumber") ?? textContent(service, "TrainNumber");
+
+  return combineServiceCode(lineName, journeyNumber);
+}
+
+function combineServiceCode(lineName: string | null, journeyNumber: string | null): string | null {
+  const normalizedLineName = lineName?.trim();
+  const normalizedJourneyNumber = journeyNumber?.trim();
+
+  if (normalizedLineName && normalizedJourneyNumber && !normalizedLineName.includes(normalizedJourneyNumber)) {
+    return `${normalizedLineName} ${normalizedJourneyNumber}`;
+  }
+  return normalizedLineName || normalizedJourneyNumber || null;
+}
+
+function operatorRefLabel(operatorRef: string | null): string | null {
+  return operatorRef ? `Operator ${operatorRef}` : null;
+}
+
+function transferCountFromTripResult(tripResult: string, timedLegCount: number): number {
+  const transfers = Number(textContent(tripResult, "Transfers"));
+  if (Number.isFinite(transfers)) {
+    return Math.max(0, transfers);
+  }
+  return Math.max(0, timedLegCount - 1);
+}
+
+function uniqueValues(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 function countryCodeFromRef(ref: string): string {

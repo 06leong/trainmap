@@ -19,15 +19,21 @@ export function RouteEditor({
 }) {
   const [stops, setStops] = useState<TripStop[]>(trip.stops);
   const [manualVias, setManualVias] = useState<ManualViaPoint[]>(trip.geometry?.manualViaPoints ?? []);
+  const [hasManualPreviewChanges, setHasManualPreviewChanges] = useState(false);
   const editedTrip = useMemo<Trip>(() => ({ ...trip, stops }), [stops, trip]);
-  const generatedGeometry = useMemo(() => regenerateRouteGeometry(editedTrip, manualVias), [editedTrip, manualVias]);
+  const regeneratedGeometry = useMemo(() => regenerateRouteGeometry(editedTrip, manualVias), [editedTrip, manualVias]);
+  const previewGeometry = hasManualPreviewChanges || !trip.geometry ? regeneratedGeometry : trip.geometry;
   const previewTrip = useMemo<Trip>(
     () => ({
       ...editedTrip,
-      geometry: generatedGeometry
+      geometry: previewGeometry
     }),
-    [editedTrip, generatedGeometry]
+    [editedTrip, previewGeometry]
   );
+
+  function markManualPreviewChanged() {
+    setHasManualPreviewChanges(true);
+  }
 
   return (
     <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
@@ -57,7 +63,10 @@ export function RouteEditor({
                   type="button"
                   className="rounded border border-black/10 px-2 py-1 text-xs disabled:opacity-30"
                   disabled={index === 0}
-                  onClick={() => setStops(moveStop(stops, index, index - 1))}
+                  onClick={() => {
+                    markManualPreviewChanged();
+                    setStops(moveStop(stops, index, index - 1));
+                  }}
                 >
                   Up
                 </button>
@@ -65,7 +74,10 @@ export function RouteEditor({
                   type="button"
                   className="rounded border border-black/10 px-2 py-1 text-xs disabled:opacity-30"
                   disabled={index === stops.length - 1}
-                  onClick={() => setStops(moveStop(stops, index, index + 1))}
+                  onClick={() => {
+                    markManualPreviewChanged();
+                    setStops(moveStop(stops, index, index + 1));
+                  }}
                 >
                   Down
                 </button>
@@ -80,7 +92,8 @@ export function RouteEditor({
             <button
               type="button"
               className="inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-xs text-white"
-              onClick={() =>
+              onClick={() => {
+                markManualPreviewChanged();
                 setManualVias((current) => [
                   ...current,
                   {
@@ -89,8 +102,8 @@ export function RouteEditor({
                     coordinates: midpoint(stops),
                     sequence: 2
                   }
-                ])
-              }
+                ]);
+              }}
             >
               <Plus className="h-3.5 w-3.5" />
               Add via
@@ -101,11 +114,12 @@ export function RouteEditor({
               <div key={via.id} className="grid gap-2 rounded-md border border-black/10 bg-[#f8f5ef] p-2 md:grid-cols-[1fr_1fr_auto]">
                 <input
                   value={via.label}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    markManualPreviewChanged();
                     setManualVias((current) =>
                       current.map((candidate) => (candidate.id === via.id ? { ...candidate, label: event.target.value } : candidate))
-                    )
-                  }
+                    );
+                  }}
                   className="rounded border border-black/10 bg-white px-2 py-1 text-sm outline-none focus:border-ink"
                 />
                 <input
@@ -113,6 +127,7 @@ export function RouteEditor({
                   onChange={(event) => {
                     const [longitude, latitude] = event.target.value.split(",").map((value) => Number(value.trim()));
                     if (Number.isFinite(longitude) && Number.isFinite(latitude)) {
+                      markManualPreviewChanged();
                       setManualVias((current) =>
                         current.map((candidate) =>
                           candidate.id === via.id ? { ...candidate, coordinates: [longitude, latitude] } : candidate
@@ -125,7 +140,10 @@ export function RouteEditor({
                 <button
                   type="button"
                   className="inline-flex items-center justify-center rounded border border-black/10 px-2 text-sm"
-                  onClick={() => setManualVias((current) => current.filter((candidate) => candidate.id !== via.id))}
+                  onClick={() => {
+                    markManualPreviewChanged();
+                    setManualVias((current) => current.filter((candidate) => candidate.id !== via.id));
+                  }}
                 >
                   <Minus className="h-4 w-4" />
                 </button>
@@ -147,15 +165,15 @@ export function RouteEditor({
           <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
             <div>
               <div className="text-white/48">Version</div>
-              <div className="font-display text-2xl">{generatedGeometry.version}</div>
+              <div className="font-display text-2xl">{previewGeometry.version}</div>
             </div>
             <div>
               <div className="text-white/48">Confidence</div>
-              <div className="font-display text-2xl capitalize">{generatedGeometry.confidence}</div>
+              <div className="font-display text-2xl capitalize">{previewGeometry.confidence}</div>
             </div>
             <div>
               <div className="text-white/48">Points</div>
-              <div className="font-display text-2xl">{generatedGeometry.geometry.coordinates.length}</div>
+              <div className="font-display text-2xl">{previewGeometry.geometry.coordinates.length}</div>
             </div>
           </div>
         </div>

@@ -44,16 +44,25 @@ export function TransportMap({
   const routeData = useMemo<FeatureCollection<LineString>>(
     () => ({
       type: "FeatureCollection",
-      features: visibleTrips.map((trip) => ({
-        type: "Feature",
-        properties: {
-          id: trip.id,
-          title: trip.title,
-          confidence: trip.geometry?.confidence ?? "inferred",
-          operator: trip.operatorName
-        },
-        geometry: getGeometryForTripDetail(trip)
-      }))
+      features: visibleTrips.flatMap((trip) => {
+        const geometry = getGeometryForTripDetail(trip);
+        if (geometry.coordinates.length < 2) {
+          return [];
+        }
+
+        return [
+          {
+            type: "Feature" as const,
+            properties: {
+              id: trip.id,
+              title: trip.title,
+              confidence: trip.geometry?.confidence ?? "inferred",
+              operator: trip.operatorName
+            },
+            geometry
+          }
+        ];
+      })
     }),
     [visibleTrips]
   );

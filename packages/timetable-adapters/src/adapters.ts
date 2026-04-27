@@ -31,6 +31,9 @@ export interface TimetableTripOption {
   origin: string;
   destination: string;
   stopCount: number;
+  transferCount?: number;
+  legCount?: number;
+  serviceSummary?: string;
 }
 
 export interface TimetableAdapter {

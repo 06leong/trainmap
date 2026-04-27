@@ -79,7 +79,7 @@ describe("timetable adapters", () => {
     expect(xml).not.toContain("LocationName");
     expect(stations[0]).toEqual({
       id: "8503000",
-      name: "Zürich HB",
+      name: "Zurich HB",
       countryCode: "CH",
       coordinates: [8.5402, 47.3782]
     });
@@ -90,12 +90,27 @@ describe("timetable adapters", () => {
 
     expect(option.providerId).toBe("swiss_open_data");
     expect(option.trainCode).toBe("EC 317");
+    expect(option.operatorName).toBe("Swiss Federal Railways SBB");
+    expect(option.transferCount).toBe(0);
+    expect(option.serviceSummary).toBe("Direct | EC 317");
     expect(option.stops.map((stop) => stop.stationName)).toEqual(["Zurich HB", "Lugano", "Milano Centrale"]);
     expect(option.geometry?.coordinates).toEqual([
       [8.5402, 47.3782],
       [8.95, 46.01],
       [9.2042, 45.4864]
     ]);
+  });
+
+  it("parses OJP 2.0 service metadata and merges same-station transfer stops", () => {
+    const [option] = parseSwissOjpTripResponse(sampleSwissOjpTransferResponse);
+
+    expect(option.trainCode).toBe("IC 61 + EC 317");
+    expect(option.operatorName).toBe("SBB + Trenitalia");
+    expect(option.transferCount).toBe(1);
+    expect(option.serviceSummary).toBe("1 transfer | IC 61 + EC 317");
+    expect(option.stops.map((stop) => stop.stationName)).toEqual(["Bern", "Olten", "Lugano", "Milano Centrale"]);
+    expect(option.stops[1].arrivalAt).toBe("2026-04-29T09:24:00Z");
+    expect(option.stops[1].departureAt).toBe("2026-04-29T09:30:00Z");
   });
 
   it("posts Swiss OJP requests with required headers", async () => {
@@ -213,6 +228,102 @@ const sampleSwissOjpResponse = `<?xml version="1.0" encoding="UTF-8"?>
   </siri:ServiceDelivery>
 </siri:OJPResponse>`;
 
+const sampleSwissOjpTransferResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<OJPResponse xmlns="http://www.vdv.de/ojp" xmlns:siri="http://www.siri.org.uk/siri">
+  <siri:ServiceDelivery>
+    <OJPTripDelivery>
+      <TripResponseContext>
+        <Places>
+          <Location>
+            <siri:StopPointRef>ch:1:sloid:7000:5:10</siri:StopPointRef>
+            <Name><Text>Bern</Text></Name>
+            <GeoPosition><siri:Longitude>7.4391</siri:Longitude><siri:Latitude>46.9488</siri:Latitude></GeoPosition>
+          </Location>
+          <Location>
+            <siri:StopPointRef>ch:1:sloid:218:4:7</siri:StopPointRef>
+            <Name><Text>Olten</Text></Name>
+            <GeoPosition><siri:Longitude>7.9079</siri:Longitude><siri:Latitude>47.3519</siri:Latitude></GeoPosition>
+          </Location>
+          <Location>
+            <siri:StopPointRef>ch:1:sloid:218:7:12</siri:StopPointRef>
+            <Name><Text>Olten</Text></Name>
+            <GeoPosition><siri:Longitude>7.9078</siri:Longitude><siri:Latitude>47.3518</siri:Latitude></GeoPosition>
+          </Location>
+          <Location>
+            <siri:StopPointRef>ch:1:sloid:5300:1:1</siri:StopPointRef>
+            <Name><Text>Lugano</Text></Name>
+            <GeoPosition><siri:Longitude>8.9462</siri:Longitude><siri:Latitude>46.0049</siri:Latitude></GeoPosition>
+          </Location>
+          <Location>
+            <siri:StopPointRef>8301700</siri:StopPointRef>
+            <Name><Text>Milano Centrale</Text></Name>
+            <GeoPosition><siri:Longitude>9.2042</siri:Longitude><siri:Latitude>45.4864</siri:Latitude></GeoPosition>
+          </Location>
+        </Places>
+      </TripResponseContext>
+      <TripResult>
+        <Id>result-bern-milan-transfer</Id>
+        <Trip>
+          <StartTime>2026-04-29T08:38:00Z</StartTime>
+          <EndTime>2026-04-29T13:17:00Z</EndTime>
+          <Transfers>1</Transfers>
+          <Leg>
+            <TimedLeg>
+              <LegBoard>
+                <siri:StopPointRef>ch:1:sloid:7000:5:10</siri:StopPointRef>
+                <StopPointName><Text>Bern</Text></StopPointName>
+                <ServiceDeparture><TimetabledTime>2026-04-29T08:38:00Z</TimetabledTime></ServiceDeparture>
+                <Order>1</Order>
+              </LegBoard>
+              <LegAlight>
+                <siri:StopPointRef>ch:1:sloid:218:4:7</siri:StopPointRef>
+                <StopPointName><Text>Olten</Text></StopPointName>
+                <ServiceArrival><TimetabledTime>2026-04-29T09:24:00Z</TimetabledTime></ServiceArrival>
+                <Order>2</Order>
+              </LegAlight>
+              <Service>
+                <PublishedServiceName><Text>IC</Text></PublishedServiceName>
+                <TrainNumber>61</TrainNumber>
+                <JourneyRef>ch:1:sjyid:ic-61</JourneyRef>
+                <Extension><OperatorName>SBB</OperatorName></Extension>
+              </Service>
+            </TimedLeg>
+          </Leg>
+          <Leg>
+            <TimedLeg>
+              <LegBoard>
+                <siri:StopPointRef>ch:1:sloid:218:7:12</siri:StopPointRef>
+                <StopPointName><Text>Olten</Text></StopPointName>
+                <ServiceDeparture><TimetabledTime>2026-04-29T09:30:00Z</TimetabledTime></ServiceDeparture>
+                <Order>1</Order>
+              </LegBoard>
+              <LegIntermediate>
+                <siri:StopPointRef>ch:1:sloid:5300:1:1</siri:StopPointRef>
+                <StopPointName><Text>Lugano</Text></StopPointName>
+                <ServiceArrival><TimetabledTime>2026-04-29T11:58:00Z</TimetabledTime></ServiceArrival>
+                <ServiceDeparture><TimetabledTime>2026-04-29T12:02:00Z</TimetabledTime></ServiceDeparture>
+                <Order>2</Order>
+              </LegIntermediate>
+              <LegAlight>
+                <siri:StopPointRef>8301700</siri:StopPointRef>
+                <StopPointName><Text>Milano Centrale</Text></StopPointName>
+                <ServiceArrival><TimetabledTime>2026-04-29T13:17:00Z</TimetabledTime></ServiceArrival>
+                <Order>3</Order>
+              </LegAlight>
+              <Service>
+                <PublishedServiceName><Text>EC</Text></PublishedServiceName>
+                <Extension><PublishedJourneyNumber>317</PublishedJourneyNumber></Extension>
+                <JourneyRef>ch:1:sjyid:ec-317</JourneyRef>
+                <Extension><OperatorName>Trenitalia</OperatorName></Extension>
+              </Service>
+            </TimedLeg>
+          </Leg>
+        </Trip>
+      </TripResult>
+    </OJPTripDelivery>
+  </siri:ServiceDelivery>
+</OJPResponse>`;
+
 const sampleSwissOjpLocationResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <siri:OJPResponse xmlns:siri="http://www.siri.org.uk/siri" xmlns:ojp="http://www.vdv.de/ojp">
   <siri:ServiceDelivery>
@@ -221,9 +332,9 @@ const sampleSwissOjpLocationResponse = `<?xml version="1.0" encoding="UTF-8"?>
         <ojp:Location>
           <ojp:StopPlace>
             <ojp:StopPlaceRef>8503000</ojp:StopPlaceRef>
-            <ojp:StopPlaceName><ojp:Text>Zürich HB</ojp:Text></ojp:StopPlaceName>
+            <ojp:StopPlaceName><ojp:Text>Zurich HB</ojp:Text></ojp:StopPlaceName>
           </ojp:StopPlace>
-          <ojp:LocationName><ojp:Text>Zürich HB</ojp:Text></ojp:LocationName>
+          <ojp:LocationName><ojp:Text>Zurich HB</ojp:Text></ojp:LocationName>
           <ojp:GeoPosition>
             <siri:Longitude>8.5402</siri:Longitude>
             <siri:Latitude>47.3782</siri:Latitude>

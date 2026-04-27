@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { CalendarClock, Check, Clock3, MapPinned, Search, TrainFront } from "lucide-react";
+import { useState, useTransition } from "react";
+import { CalendarClock, Check, MapPinned, Search, TrainFront } from "lucide-react";
 import type { StationSearchResult, SwissOpenDataRouteOption } from "@trainmap/timetable-adapters";
 import type { Trip } from "@trainmap/domain";
 import {
@@ -38,11 +38,11 @@ export function ScheduleAssistant() {
   const [departureTime, setDepartureTime] = useState("09:00");
   const [options, setOptions] = useState<SwissOpenDataRouteOption[]>([]);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+  const [previewTrip, setPreviewTrip] = useState<Trip>(() => buildPreviewTrip(undefined, defaultOrigin, defaultDestination));
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const selectedOption = options.find((option) => option.id === selectedOptionId) ?? options[0];
-  const previewTrip = useMemo(() => buildPreviewTrip(selectedOption, origin, destination), [destination, origin, selectedOption]);
 
   function searchStations(kind: "origin" | "destination") {
     const query = kind === "origin" ? originQuery : destinationQuery;
@@ -68,7 +68,14 @@ export function ScheduleAssistant() {
       setMessage(result.error ?? null);
       setOptions(result.options);
       setSelectedOptionId(result.options[0]?.id ?? null);
+      setPreviewTrip(buildPreviewTrip(result.options[0], origin, destination));
     });
+  }
+
+  function resetConnections() {
+    setOptions([]);
+    setSelectedOptionId(null);
+    setMessage(null);
   }
 
   return (
@@ -114,9 +121,10 @@ export function ScheduleAssistant() {
               setOrigin(station);
               setOriginQuery(station.name);
               setOriginResults([]);
+              resetConnections();
             }}
           />
-          <div className="hidden items-center justify-center pt-8 text-black/35 md:flex">→</div>
+          <div className="hidden items-center justify-center pt-8 text-black/35 md:flex">-&gt;</div>
           <StationPicker
             label="To"
             query={destinationQuery}
@@ -128,6 +136,7 @@ export function ScheduleAssistant() {
               setDestination(station);
               setDestinationQuery(station.name);
               setDestinationResults([]);
+              resetConnections();
             }}
           />
         </div>
@@ -138,7 +147,10 @@ export function ScheduleAssistant() {
             <input
               type="date"
               value={departureDate}
-              onChange={(event) => setDepartureDate(event.target.value)}
+              onChange={(event) => {
+                setDepartureDate(event.target.value);
+                resetConnections();
+              }}
               className="mt-1 h-11 w-full rounded-md border border-black/10 bg-[#f8f5ef] px-3 outline-none focus:border-ink"
             />
           </label>
@@ -147,7 +159,10 @@ export function ScheduleAssistant() {
             <input
               type="time"
               value={departureTime}
-              onChange={(event) => setDepartureTime(event.target.value)}
+              onChange={(event) => {
+                setDepartureTime(event.target.value);
+                resetConnections();
+              }}
               className="mt-1 h-11 w-full rounded-md border border-black/10 bg-[#f8f5ef] px-3 outline-none focus:border-ink"
             />
           </label>
@@ -174,16 +189,22 @@ export function ScheduleAssistant() {
               <button
                 key={option.id}
                 type="button"
-                onClick={() => setSelectedOptionId(option.id)}
+                onClick={() => {
+                  setSelectedOptionId(option.id);
+                  setPreviewTrip(buildPreviewTrip(option, origin, destination));
+                }}
                 className="grid w-full grid-cols-[1fr_auto_auto] items-center gap-3 rounded-md border border-black/10 bg-white px-4 py-3 text-left transition hover:border-ink"
               >
                 <div>
                   <div className="font-medium text-ink">
-                    {time(option.departureAt)} - {time(option.arrivalAt)}
+                    {localTime(option.departureAt)} - {localTime(option.arrivalAt)}
                   </div>
                   <div className="mt-1 text-sm text-black/55">
-                    {date(option.departureAt)} · {duration(option.departureAt, option.arrivalAt)} · {option.stopCount} stops
+                    {localDate(option.departureAt)} | {duration(option.departureAt, option.arrivalAt)} |{" "}
+                    {option.transferCount === 0 ? "direct" : `${option.transferCount ?? 0} transfer${option.transferCount === 1 ? "" : "s"}`} |{" "}
+                    {option.stopCount} stops
                   </div>
+                  <div className="mt-1 text-xs text-black/45">{option.operatorName}</div>
                 </div>
                 <div className="rounded-md border border-black/10 bg-[#f8f5ef] px-2 py-1 text-xs font-medium text-black/62">
                   {option.trainCode}
@@ -272,7 +293,7 @@ function StationPicker({
         </div>
       </label>
       <div className="mt-2 text-xs text-black/45">
-        {selected.countryCode} · {selected.id} · {selected.coordinates.join(", ")}
+        {selected.countryCode} | {selected.id} | {selected.coordinates.join(", ")}
       </div>
       {results.length > 0 ? (
         <div className="mt-2 space-y-1 rounded-md border border-black/10 bg-white p-1 shadow-sm">
@@ -285,7 +306,7 @@ function StationPicker({
             >
               <div className="font-medium text-ink">{station.name}</div>
               <div className="text-xs text-black/45">
-                {station.countryCode} · {station.id}
+                {station.countryCode} | {station.id}
               </div>
             </button>
           ))}
@@ -319,19 +340,20 @@ function RouteDetails({ option }: { option?: SwissOpenDataRouteOption }) {
             <div>
               <div className="font-medium text-ink">{stop.stationName}</div>
               <div className="text-xs text-black/45">
-                {stop.countryCode} · {stop.stationId}
+                {stop.countryCode} | {stop.stationId}
               </div>
             </div>
             <div className="text-right text-sm text-black/62">
-              <div>{stop.departureAt ? time(stop.departureAt) : ""}</div>
-              <div>{stop.arrivalAt ? time(stop.arrivalAt) : ""}</div>
+              <div>{stop.departureAt ? localTime(stop.departureAt) : ""}</div>
+              <div>{stop.arrivalAt ? localTime(stop.arrivalAt) : ""}</div>
             </div>
           </div>
         ))}
       </div>
-      <div className="mt-4 grid gap-3 border-t border-black/10 pt-4 text-sm md:grid-cols-3">
+      <div className="mt-4 grid gap-3 border-t border-black/10 pt-4 text-sm md:grid-cols-4">
         <Metric label="Operator" value={option.operatorName} />
         <Metric label="Line / train code" value={option.trainCode} />
+        <Metric label="Transfers" value={option.transferCount === 0 ? "Direct" : String(option.transferCount ?? 0)} />
         <Metric label="Geometry points" value={String(option.geometry?.coordinates.length ?? option.stops.length)} />
       </div>
     </div>
@@ -443,20 +465,32 @@ function hasCoordinates(station: StationSearchResult): station is StationOption 
   return Boolean(station.coordinates);
 }
 
-function time(value: string): string {
+const ojpDisplayTimeZone = "Europe/Zurich";
+
+function localTime(value: string): string {
   const dateValue = new Date(value);
   if (Number.isNaN(dateValue.getTime())) {
     return value.slice(11, 16) || value;
   }
-  return new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(dateValue);
+  return new Intl.DateTimeFormat("en", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: ojpDisplayTimeZone
+  }).format(dateValue);
 }
 
-function date(value: string): string {
+function localDate(value: string): string {
   const dateValue = new Date(value);
   if (Number.isNaN(dateValue.getTime())) {
     return value.slice(0, 10) || value;
   }
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(dateValue);
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: ojpDisplayTimeZone
+  }).format(dateValue);
 }
 
 function duration(from: string, to: string): string {
