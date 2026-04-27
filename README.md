@@ -189,7 +189,7 @@ docker compose exec -T postgres \
 - Stop sequence is the canonical route backbone.
 - `@trainmap/geo` provides `getRoute(...)`, `loadConnectionsOrSetManualVias(...)`, route confidence, fitBounds helpers, and geometry version creation.
 - Swiss Open Data OJP 2.0 can create and refine trips with provider stop sequences and leg projection / track section coordinates when `SWISS_OPEN_DATA_API_KEY` is configured.
-- Swiss Open Data Train Formation Service and GTFS Realtime tokens are configurable, but they are intentionally not part of the Add Trip planning path yet. Formation is for train composition; GTFS-RT is for real-time updates tied to a matching GTFS Static feed.
+- Swiss Open Data Train Formation Service can enrich schedule-created trips with best-effort formation summaries for supported EVUs. GTFS Realtime tokens are configurable but reserved for future real-time updates tied to a matching GTFS Static feed.
 - The Add Trip page uses OJP 2.0 server-side for station search, connection search, stop sequence import, map preview, and provider geometry creation.
 - CSV import preserves raw rows and separates matched, fuzzy matched, unmatched, and invalid rows.
 - Timetable adapters expose stable provider contracts for `swiss_open_data`, `db_api`, `ns_api`, and `generic_gtfs`.

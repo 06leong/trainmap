@@ -2,6 +2,12 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { getTimetableAdapter, listTimetableProviders } from "./adapters";
+import { swissBusinessOrganisationNames } from "./swiss-business-organisations.generated";
+import {
+  buildSwissTrainFormationUrl,
+  inferSwissTrainFormationQueries,
+  summarizeSwissTrainFormationPayload
+} from "./swiss-formation";
 import {
   buildSwissOjpLocationInformationRequest,
   buildSwissOjpTripRequest,
@@ -111,6 +117,54 @@ describe("timetable adapters", () => {
     expect(option.stops.map((stop) => stop.stationName)).toEqual(["Bern", "Olten", "Lugano", "Milano Centrale"]);
     expect(option.stops[1].arrivalAt).toBe("2026-04-29T09:24:00Z");
     expect(option.stops[1].departureAt).toBe("2026-04-29T09:30:00Z");
+  });
+
+  it("bundles Swiss Business Organisation names for OJP OperatorRef mapping", () => {
+    expect(Object.keys(swissBusinessOrganisationNames).length).toBeGreaterThan(1000);
+    expect(swissBusinessOrganisationNames["11"]).toBe("Swiss Federal Railways SBB");
+    expect(swissBusinessOrganisationNames["955"]).toBe("Trasporti Pubblici Luganesi SA");
+    expect(swissBusinessOrganisationNames["1183"]).toBe("Trenitalia S.p.A.");
+  });
+
+  it("builds Train Formation URLs from the versionless product base URL", () => {
+    const url = buildSwissTrainFormationUrl("https://api.opentransportdata.swiss/formation", {
+      evu: "SBBP",
+      operationDate: "2026-04-27",
+      trainNumber: "61"
+    });
+
+    expect(url).toBe(
+      "https://api.opentransportdata.swiss/formation/formations_full?evu=SBBP&operationDate=2026-04-27&trainNumber=61"
+    );
+    expect(url).not.toMatch(/\/formation\/v\d+\//);
+  });
+
+  it("infers supported Train Formation queries from OJP service metadata", () => {
+    const [option] = parseSwissOjpTripResponse(sampleSwissOjpTransferResponse);
+    const queries = inferSwissTrainFormationQueries(option);
+
+    expect(queries).toEqual([
+      {
+        evu: "SBBP",
+        operationDate: "2026-04-29",
+        trainNumber: "61",
+        serviceLabel: "IC 61"
+      }
+    ]);
+  });
+
+  it("summarizes Train Formation payloads without depending on exact upstream nesting", () => {
+    expect(
+      summarizeSwissTrainFormationPayload({
+        trainMetaInformation: { trainNumber: "61" },
+        scheduledStops: [{ stop: "Bern", formationShortString: "A[1][2]" }, { stop: "Olten" }],
+        formationElements: [{ vehicle: "1" }, { vehicle: "2" }]
+      })
+    ).toEqual({
+      formationStrings: ["A[1][2]"],
+      stopCount: 2,
+      vehicleCount: 2
+    });
   });
 
   it("posts Swiss OJP requests with required headers", async () => {

@@ -27,7 +27,7 @@ const defaultDestination: StationOption = {
   coordinates: [9.2042, 45.4864]
 };
 
-export function ScheduleAssistant() {
+export function ScheduleAssistant({ trainFormationConfigured }: { trainFormationConfigured: boolean }) {
   const [originQuery, setOriginQuery] = useState(defaultOrigin.name);
   const [destinationQuery, setDestinationQuery] = useState(defaultDestination.name);
   const [origin, setOrigin] = useState<StationOption>(defaultOrigin);
@@ -222,7 +222,7 @@ export function ScheduleAssistant() {
           </div>
         </div>
 
-        <RouteDetails option={selectedOption} />
+        <RouteDetails option={selectedOption} trainFormationConfigured={trainFormationConfigured} />
 
         <form action={createTripFromScheduleAction} className="mt-5 rounded-md border border-black/10 bg-[#f8f5ef] p-4">
           <input type="hidden" name="scheduleOptionJson" value={selectedOption ? JSON.stringify(selectedOption) : ""} />
@@ -316,7 +316,13 @@ function StationPicker({
   );
 }
 
-function RouteDetails({ option }: { option?: SwissOpenDataRouteOption }) {
+function RouteDetails({
+  option,
+  trainFormationConfigured
+}: {
+  option?: SwissOpenDataRouteOption;
+  trainFormationConfigured: boolean;
+}) {
   if (!option) {
     return (
       <div className="mt-4 rounded-md border border-black/10 bg-[#f8f5ef] p-4 text-sm text-black/58">
@@ -355,6 +361,7 @@ function RouteDetails({ option }: { option?: SwissOpenDataRouteOption }) {
         <Metric label="Line / train code" value={option.trainCode} />
         <Metric label="Transfers" value={option.transferCount === 0 ? "Direct" : String(option.transferCount ?? 0)} />
         <Metric label="Geometry points" value={String(option.geometry?.coordinates.length ?? option.stops.length)} />
+        <Metric label="Formation" value={trainFormationConfigured ? "Queried on create" : "Token not configured"} />
       </div>
     </div>
   );

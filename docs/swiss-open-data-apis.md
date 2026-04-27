@@ -8,7 +8,7 @@ Official API-format datasets currently listed by opentransportdata.swiss:
 
 2. Train Formation Service (Train Composition)
    - Use: train composition by vehicle, stop, or full formation endpoints.
-   - trainmap status: configured for later train detail enrichment, not route geometry or Add Trip planning.
+   - trainmap status: queried during schedule-created trip persistence for supported EVUs; displayed on trip detail as a best-effort formation summary.
 
 3. Beta: Service for requesting price information via OJP Fare
    - Use: non-binding Swiss public transport fare calculation through OJP/NOVA.
@@ -75,7 +75,13 @@ The OJP 2.0 request uses:
 - `Content-Type: application/xml`
 - a descriptive `User-Agent`
 
-OJP 2.0 `OperatorRef` values reference Business Organisations by `organisationNumber`. The app maps known numeric refs through the official Business Organisations data so values such as `11` and `955` display as `Swiss Federal Railways SBB` and `Trasporti Pubblici Luganesi SA` instead of leaking `Operator 11` labels.
+OJP 2.0 `OperatorRef` values reference Business Organisations by `organisationNumber`. The app bundles the official Business Organisations v2 actual-date mapping so values such as `11`, `955`, and `1183` display as `Swiss Federal Railways SBB`, `Trasporti Pubblici Luganesi SA`, and `Trenitalia S.p.A.` instead of leaking numeric fallback labels.
+
+Refresh the bundled operator mapping with:
+
+```bash
+npm run swiss-open-data:operators
+```
 
 No token hash is needed. To verify a token from a shell after building the timetable adapter package:
 
@@ -96,7 +102,7 @@ Train Formation Service is a REST/JSON service for train composition data, not a
 
 - `https://api.opentransportdata.swiss/formation`
 
-Do not configure `/formation/v1` or `/formation/v2` in `SWISS_TRAIN_FORMATION_API_BASE_URL`. When the Formation adapter is implemented, it should append only the endpoint paths documented in the current product/OpenAPI definition.
+Do not add a version suffix in `SWISS_TRAIN_FORMATION_API_BASE_URL`. trainmap appends `/formations_full` to the base URL when it queries formation data.
 
 Typical query parameters are:
 
@@ -110,6 +116,13 @@ Configured environment:
 - `SWISS_TRAIN_FORMATION_API_BASE_URL`, default `https://api.opentransportdata.swiss/formation`
 
 This token is separate from the OJP token. Use the API Manager `TOKEN` value only; the token hash is not used. The public limits page currently groups Train Formation Service with OJP/OJPFare/CKAN at 50 requests per minute and 20,000 requests per day per API key.
+
+Runtime behavior:
+
+- Formation is not used for route planning.
+- During Add Trip creation from an OJP connection, trainmap infers supported EVU codes from each OJP leg and extracts the train number from the train code.
+- Supported inferred EVUs include `SBBP`, `BLSP`, `SOB`, `THURBO`, `RhB`, `TPF`, `TRN`, `MBC`, `OeBB`, and `ZB`.
+- Formation query failures do not block trip creation; the trip detail page shows available, unavailable, or failed summaries from the persisted trip metadata.
 
 ## GTFS Realtime configuration
 

@@ -11,6 +11,7 @@ import {
   searchSwissOpenDataRoutes,
   searchSwissOpenDataStations
 } from "@/lib/providers/swiss-open-data";
+import { getTrainFormationForScheduleOption } from "@/lib/providers/swiss-formation";
 
 export interface ScheduleStationSearchResult {
   stations: StationSearchResult[];
@@ -70,6 +71,7 @@ export async function createTripFromScheduleAction(formData: FormData) {
   const destination = option.stops[option.stops.length - 1];
   const serviceClass = stringValue(formData, "serviceClass", "second") as ServiceClass;
   const title = stringValue(formData, "title", `${origin.stationName} to ${destination.stationName}`);
+  const formation = await getTrainFormationForScheduleOption(option);
 
   const trip = await createTripWithInitialGeometry(repository, {
     title,
@@ -89,6 +91,12 @@ export async function createTripFromScheduleAction(formData: FormData) {
       manualViaPoints: [],
       notes: `Created from Swiss Open Data OJP result ${option.rawResultId}.`,
       createdBy: "swiss_open_data"
+    },
+    rawImportRow: {
+      provider: "swiss_open_data_ojp",
+      rawResultId: option.rawResultId,
+      services: option.services,
+      trainFormation: formation
     }
   });
 

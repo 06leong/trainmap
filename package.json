@@ -18,6 +18,7 @@
     "db:migrate:exports": "node scripts/run-sql.mjs db/migrations/002_export_error_message.sql",
     "db:seed": "node scripts/run-sql.mjs db/seeds/demo.sql",
     "swiss-open-data:smoke": "node scripts/smoke-swiss-open-data.mjs",
+    "swiss-open-data:operators": "node scripts/update-swiss-business-organisations.mjs",
     "playwright:install": "npx playwright install chromium"
   },
   "devDependencies": {
