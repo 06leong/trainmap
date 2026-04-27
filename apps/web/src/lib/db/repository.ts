@@ -340,11 +340,11 @@ export class PostgresTrainmapRepository implements TrainmapRepository {
       `
         update exports
         set
-          status = $2,
+          status = $2::export_status,
           output_path = coalesce($3, output_path),
           error_message = $4,
           completed_at = case
-            when $2 in ('complete', 'failed') then coalesce($5::timestamptz, now())
+            when $2::export_status in ('complete', 'failed') then coalesce($5::timestamptz, now())
             else completed_at
           end
         where id = $1
