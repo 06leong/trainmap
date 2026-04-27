@@ -63,7 +63,7 @@ Required runtime environment variables:
 - `SWISS_OPEN_DATA_REQUESTOR_REF`: optional OJP requestor reference, default `trainmap_prod` in the app. Use a suffix such as `_test`, `_int`, or `_prod`.
 - `SWISS_OPEN_DATA_USER_AGENT`: optional User-Agent for Swiss Open Data API calls, default `trainmap/0.1`.
 - `SWISS_TRAIN_FORMATION_API_KEY`: optional Train Formation Service token for future train composition enrichment.
-- `SWISS_TRAIN_FORMATION_API_BASE_URL`: optional Train Formation Service base URL, default `https://api.opentransportdata.swiss/formation/v2`.
+- `SWISS_TRAIN_FORMATION_API_BASE_URL`: optional Train Formation Service product base URL, default `https://api.opentransportdata.swiss/formation`.
 - `SWISS_GTFS_RT_API_KEY`: optional GTFS Realtime token for future Trip Updates ingestion.
 - `SWISS_GTFS_RT_API_URL`: optional GTFS Realtime Trip Updates URL, default `https://api.opentransportdata.swiss/la/gtfs-rt`.
 

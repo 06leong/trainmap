@@ -92,12 +92,11 @@ Optional environment:
 
 ## Train Formation Service configuration
 
-Train Formation Service is a REST/JSON service for train composition data, not a route planner. The current official documentation says to use the versioned `/formation/v2` endpoints. The main endpoint variants are:
+Train Formation Service is a REST/JSON service for train composition data, not a route planner. The API Manager product URL should be configured as the base URL without a version suffix:
 
-- stop-based: `/formations_stop_based`
-- vehicle-based: `/formations_vehicle_based`
-- full: `/formations_full`
-- health: `/health`
+- `https://api.opentransportdata.swiss/formation`
+
+Do not configure `/formation/v1` or `/formation/v2` in `SWISS_TRAIN_FORMATION_API_BASE_URL`. When the Formation adapter is implemented, it should append only the endpoint paths documented in the current product/OpenAPI definition.
 
 Typical query parameters are:
 
@@ -108,7 +107,7 @@ Typical query parameters are:
 Configured environment:
 
 - `SWISS_TRAIN_FORMATION_API_KEY`
-- `SWISS_TRAIN_FORMATION_API_BASE_URL`, default `https://api.opentransportdata.swiss/formation/v2`
+- `SWISS_TRAIN_FORMATION_API_BASE_URL`, default `https://api.opentransportdata.swiss/formation`
 
 This token is separate from the OJP token. Use the API Manager `TOKEN` value only; the token hash is not used. The public limits page currently groups Train Formation Service with OJP/OJPFare/CKAN at 50 requests per minute and 20,000 requests per day per API key.
 
