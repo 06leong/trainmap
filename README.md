@@ -65,6 +65,15 @@ Required runtime environment variables:
 
 Only the API Manager `TOKEN` is used. The `TOKEN HASH` shown in the API Manager is not needed by trainmap and should not be configured in compose.
 
+After setting `SWISS_OPEN_DATA_API_KEY`, you can smoke-test OJP 2.0 outside the UI:
+
+```bash
+npm run build --workspace @trainmap/timetable-adapters
+npm run swiss-open-data:smoke
+```
+
+The smoke command searches `Zürich HB`, searches `Milano Centrale`, then runs a TripRequest between the selected station refs. It prints result counts and never prints the token.
+
 Validation:
 
 ```bash
@@ -122,7 +131,7 @@ Edit `/home/docker/trainmap/docker-compose.yml` before starting:
 - `app.environment.DATABASE_URL`: replace `change-me` with a strong password.
 - `postgres.environment.POSTGRES_PASSWORD`: use the same strong password as `DATABASE_URL`.
 - `app.environment.NEXT_PUBLIC_APP_URL`: set your public domain, for example `https://trainmap.example.com`.
-- `app.environment.SWISS_OPEN_DATA_API_KEY`: optional. Set this after creating an API Manager token to enable Swiss OJP route refinement from trip detail pages.
+- `app.environment.SWISS_OPEN_DATA_API_KEY`: optional. Set this to the API Manager `TOKEN`, not `TOKEN HASH`, to enable Swiss OJP station search, schedule-assisted trip creation, and route refinement.
 - `app.ports`: the default is `172.18.0.1:4396:3000` for Nginx Proxy Manager upstream `http://172.18.0.1:4396`. Change the gateway IP or host port if your VPS uses different values.
 
 The compose file stores PostgreSQL data under `./data` and PNG exports in a Docker-managed named volume:
@@ -173,7 +182,7 @@ docker compose exec -T postgres \
 - Route, station, label, saved view, and export data are trainmap business layers.
 - Stop sequence is the canonical route backbone.
 - `@trainmap/geo` provides `getRoute(...)`, `loadConnectionsOrSetManualVias(...)`, route confidence, fitBounds helpers, and geometry version creation.
-- Swiss Open Data OJP 2.0 can refine existing trip geometries with provider stop sequences and leg projection / track section coordinates when `SWISS_OPEN_DATA_API_KEY` is configured.
+- Swiss Open Data OJP 2.0 can create and refine trips with provider stop sequences and leg projection / track section coordinates when `SWISS_OPEN_DATA_API_KEY` is configured.
 - The Add Trip page uses OJP 2.0 server-side for station search, connection search, stop sequence import, map preview, and provider geometry creation.
 - CSV import preserves raw rows and separates matched, fuzzy matched, unmatched, and invalid rows.
 - Timetable adapters expose stable provider contracts for `swiss_open_data`, `db_api`, `ns_api`, and `generic_gtfs`.
@@ -182,5 +191,5 @@ docker compose exec -T postgres \
 
 - Runtime pages now require PostgreSQL/PostGIS persistence; without `DATABASE_URL`, the UI shows a setup notice and empty runtime data.
 - PNG export uses a simple in-process Playwright capture job for MVP; a queue can be added later if export volume grows.
-- Timetable adapters are still static in the client-side schedule assistant until provider-backed trip creation is moved behind server actions.
+- Swiss Open Data OJP availability, routing coverage, and exact geometry quality depend on the upstream API response. When OJP does not return projection or track coordinates, trainmap falls back to stop-sequence geometry.
 - Route generation creates inferred/manual GeoJSON by default, and can create provider/exact geometry through Swiss Open Data OJP when credentials are configured. Exact coverage depends on the upstream OJP response returning usable projection or track coordinates.

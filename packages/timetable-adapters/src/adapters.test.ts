@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it, vi } from "vitest";
 import { getTimetableAdapter, listTimetableProviders } from "./adapters";
 import {
   buildSwissOjpLocationInformationRequest,
@@ -38,15 +40,27 @@ describe("timetable adapters", () => {
   it("builds Swiss OJP TripRequest XML with route geometry flags", () => {
     const xml = buildSwissOjpTripRequest({
       requestorRef: "trainmap_test",
-      origin: { name: "Zurich HB", coordinates: [8.5402, 47.3782] },
-      destination: { name: "Milano Centrale", coordinates: [9.2042, 45.4864] },
+      origin: { id: "8503000", name: "Zurich HB", coordinates: [8.5402, 47.3782] },
+      destination: { id: "8300207", name: "Milano Centrale", coordinates: [9.2042, 45.4864] },
       departureAt: "2026-05-01T09:00:00Z"
     });
 
-    expect(xml).toContain("<ojp:IncludeTrackSections>true</ojp:IncludeTrackSections>");
-    expect(xml).toContain("<ojp:IncludeLegProjection>true</ojp:IncludeLegProjection>");
-    expect(xml).toContain("<ojp:IncludeIntermediateStops>true</ojp:IncludeIntermediateStops>");
-    expect(xml).toContain("<ojp:PtMode>rail</ojp:PtMode>");
+    expect(xml).toContain('<OJP xmlns="http://www.vdv.de/ojp" xmlns:siri="http://www.siri.org.uk/siri" version="2.0"');
+    expect(xml).toContain("<siri:ServiceRequest>");
+    expect(xml).toContain("<siri:RequestTimestamp>");
+    expect(xml).toContain("<siri:RequestorRef>trainmap_test</siri:RequestorRef>");
+    expect(xml).toContain("<siri:MessageIdentifier>");
+    expect(xml).toContain("<OJPTripRequest>");
+    expect(xml).toContain("<Origin>");
+    expect(xml).toContain("<StopPlaceRef>8503000</StopPlaceRef>");
+    expect(xml).toContain("<Name>");
+    expect(xml).toContain("<Text>Zurich HB</Text>");
+    expect(xml).toContain("<DepArrTime>2026-05-01T09:00:00Z</DepArrTime>");
+    expect(xml).toContain("<IncludeTrackSections>true</IncludeTrackSections>");
+    expect(xml).toContain("<IncludeLegProjection>true</IncludeLegProjection>");
+    expect(xml).toContain("<IncludeIntermediateStops>true</IncludeIntermediateStops>");
+    expect(xml).not.toContain("PtModeFilter");
+    expect(xml).not.toContain("LocationName");
   });
 
   it("builds and parses Swiss OJP location search requests", () => {
@@ -56,8 +70,13 @@ describe("timetable adapters", () => {
     });
     const stations = parseSwissOjpLocationInformationResponse(sampleSwissOjpLocationResponse);
 
-    expect(xml).toContain("<ojp:OJPLocationInformationRequest>");
-    expect(xml).toContain("<ojp:LocationName>Zurich HB</ojp:LocationName>");
+    expect(xml).toContain('<OJP xmlns="http://www.vdv.de/ojp" xmlns:siri="http://www.siri.org.uk/siri" version="2.0"');
+    expect(xml).toContain("<siri:ServiceRequest>");
+    expect(xml).toContain("<OJPLocationInformationRequest>");
+    expect(xml).toContain("<InitialInput>");
+    expect(xml).toContain("<Name>Zurich HB</Name>");
+    expect(xml).toContain("<Type>stop</Type>");
+    expect(xml).not.toContain("LocationName");
     expect(stations[0]).toEqual({
       id: "8503000",
       name: "Zürich HB",
@@ -100,6 +119,30 @@ describe("timetable adapters", () => {
     expect(calls[0].url).toBe("https://api.opentransportdata.swiss/ojp20");
     expect((calls[0].init?.headers as Record<string, string>).Authorization).toBe("Bearer token");
     expect(option.stops).toHaveLength(3);
+  });
+
+  it("includes upstream response snippets in Swiss OJP errors without exposing credentials", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const metadata = listTimetableProviders()[0];
+    const adapter = createSwissOpenDataAdapter(metadata, {
+      apiKey: "super-secret-token",
+      requestorRef: "trainmap_test",
+      fetchImpl: async () =>
+        new Response("<Problem>Invalid OJP request shape. Bearer accidental-token</Problem>", { status: 400 })
+    });
+
+    await expect(adapter.searchStations("Zurich HB")).rejects.toThrow(
+      "Swiss Open Data OJP station_search request failed with HTTP 400 at https://api.opentransportdata.swiss/ojp20. Response: <Problem>Invalid OJP request shape. Bearer [redacted]</Problem>"
+    );
+    consoleError.mockRestore();
+  });
+
+  it("does not use token hash in runtime Swiss Open Data config", () => {
+    const runtimeConfig = readFileSync(resolve(process.cwd(), "apps/web/src/lib/providers/swiss-open-data.ts"), "utf8");
+    const composeConfig = readFileSync(resolve(process.cwd(), "infra/compose/docker-compose.yml"), "utf8");
+    const envExample = readFileSync(resolve(process.cwd(), ".env.example"), "utf8");
+
+    expect(`${runtimeConfig}\n${composeConfig}\n${envExample}`).not.toMatch(/SWISS_OPEN_DATA_.*TOKEN_HASH/i);
   });
 });
 

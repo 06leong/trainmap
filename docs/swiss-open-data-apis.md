@@ -61,13 +61,26 @@ trainmap uses OJP 2.0 first because it can return the two things the app needs m
 - stop sequence through `IncludeIntermediateStops`
 - route geometry through `IncludeLegProjection` and `IncludeTrackSections`
 
-The first implementation refines an existing trip from its current first and last stop coordinates. It posts an OJP TripRequest to `https://api.opentransportdata.swiss/ojp20`, requests rail mode, normalizes returned stops into `trip_stops`, and saves returned projection/track coordinates as a provider/exact `trip_geometries` version.
+The current implementation powers Add Trip and trip-detail refinement through OJP 2.0. It posts LocationInformationRequest and TripRequest XML to `https://api.opentransportdata.swiss/ojp20`, normalizes returned station refs and stops into trainmap domain objects, and saves returned projection/track coordinates as provider/exact `trip_geometries` versions when OJP returns usable geometry.
 
 Required environment:
 
 - `SWISS_OPEN_DATA_API_KEY`
 
 Use the API Manager `TOKEN` value as `SWISS_OPEN_DATA_API_KEY`. The `TOKEN HASH` is not sent to the API and is not used by trainmap.
+
+The OJP 2.0 request uses:
+
+- `Authorization: Bearer <TOKEN>`
+- `Content-Type: application/xml`
+- a descriptive `User-Agent`
+
+No token hash is needed. To verify a token from a shell after building the timetable adapter package:
+
+```bash
+npm run build --workspace @trainmap/timetable-adapters
+npm run swiss-open-data:smoke
+```
 
 Optional environment:
 

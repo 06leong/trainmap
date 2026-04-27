@@ -28,6 +28,8 @@ export interface SwissOpenDataSearchInput {
   numberOfResults?: number;
 }
 
+type SwissOjpRequestKind = "station_search" | "trip_search";
+
 const defaultEndpoint = "https://api.opentransportdata.swiss/ojp20";
 const defaultRequestorRef = "trainmap_test";
 const defaultUserAgent = "trainmap/0.1";
@@ -58,7 +60,7 @@ export class SwissOpenDataAdapter implements TimetableAdapter {
       requestorRef: this.requestorRef
     });
 
-    const response = await this.postXml(requestXml);
+    const response = await this.postXml(requestXml, "station_search");
     return parseSwissOjpLocationInformationResponse(await response.text());
   }
 
@@ -83,11 +85,11 @@ export class SwissOpenDataAdapter implements TimetableAdapter {
       requestorRef: this.requestorRef
     });
 
-    const response = await this.postXml(requestXml);
+    const response = await this.postXml(requestXml, "trip_search");
     return parseSwissOjpTripResponse(await response.text());
   }
 
-  private async postXml(requestXml: string): Promise<Response> {
+  private async postXml(requestXml: string, kind: SwissOjpRequestKind): Promise<Response> {
     const response = await this.fetchImpl(this.endpoint, {
       method: "POST",
       headers: {
@@ -99,7 +101,16 @@ export class SwissOpenDataAdapter implements TimetableAdapter {
     });
 
     if (!response.ok) {
-      throw new Error(`Swiss Open Data OJP request failed with HTTP ${response.status}.`);
+      const responseBody = await response.text().catch(() => "");
+      const snippet = sanitizeResponseSnippet(responseBody);
+      const message = [
+        `Swiss Open Data OJP ${kind} request failed with HTTP ${response.status} at ${this.endpoint}.`,
+        snippet ? `Response: ${snippet}` : ""
+      ]
+        .filter(Boolean)
+        .join(" ");
+      console.error(message);
+      throw new Error(message);
     }
 
     return response;
@@ -118,35 +129,33 @@ export function buildSwissOjpTripRequest(input: SwissOpenDataSearchInput & { req
   const requestorRef = escapeXml(input.requestorRef ?? defaultRequestorRef);
   const departureAt = escapeXml(input.departureAt);
   const resultCount = Math.max(1, Math.min(input.numberOfResults ?? 3, 10));
+  const messageIdentifier = escapeXml(crypto.randomUUID());
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<OJP xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns="http://www.siri.org.uk/siri" version="2.0" xmlns:ojp="http://www.vdv.de/ojp">
+<OJP xmlns="http://www.vdv.de/ojp" xmlns:siri="http://www.siri.org.uk/siri" version="2.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <OJPRequest>
-    <ServiceRequest>
-      <RequestTimestamp>${timestamp}</RequestTimestamp>
-      <RequestorRef>${requestorRef}</RequestorRef>
-      <ojp:OJPTripRequest>
-        <RequestTimestamp>${timestamp}</RequestTimestamp>
-        <ojp:Origin>
+    <siri:ServiceRequest>
+      <siri:RequestTimestamp>${timestamp}</siri:RequestTimestamp>
+      <siri:RequestorRef>${requestorRef}</siri:RequestorRef>
+      <OJPTripRequest>
+        <siri:RequestTimestamp>${timestamp}</siri:RequestTimestamp>
+        <siri:MessageIdentifier>${messageIdentifier}</siri:MessageIdentifier>
+        <Origin>
           ${placeRefXml(input.origin)}
-          <ojp:DepArrTime>${departureAt}</ojp:DepArrTime>
-        </ojp:Origin>
-        <ojp:Destination>
+          <DepArrTime>${departureAt}</DepArrTime>
+        </Origin>
+        <Destination>
           ${placeRefXml(input.destination)}
-        </ojp:Destination>
-        <ojp:Params>
-          <ojp:NumberOfResults>${resultCount}</ojp:NumberOfResults>
-          <ojp:IgnoreRealtimeData>false</ojp:IgnoreRealtimeData>
-          <ojp:PtModeFilter>
-            <ojp:Exclude>false</ojp:Exclude>
-            <ojp:PtMode>rail</ojp:PtMode>
-          </ojp:PtModeFilter>
-          <ojp:IncludeTrackSections>true</ojp:IncludeTrackSections>
-          <ojp:IncludeLegProjection>true</ojp:IncludeLegProjection>
-          <ojp:IncludeIntermediateStops>true</ojp:IncludeIntermediateStops>
-        </ojp:Params>
-      </ojp:OJPTripRequest>
-    </ServiceRequest>
+        </Destination>
+        <Params>
+          <NumberOfResults>${resultCount}</NumberOfResults>
+          <IgnoreRealtimeData>false</IgnoreRealtimeData>
+          <IncludeTrackSections>true</IncludeTrackSections>
+          <IncludeLegProjection>true</IncludeLegProjection>
+          <IncludeIntermediateStops>true</IncludeIntermediateStops>
+        </Params>
+      </OJPTripRequest>
+    </siri:ServiceRequest>
   </OJPRequest>
 </OJP>`;
 }
@@ -159,26 +168,27 @@ export function buildSwissOjpLocationInformationRequest(input: {
   const timestamp = new Date().toISOString();
   const requestorRef = escapeXml(input.requestorRef ?? defaultRequestorRef);
   const maxResults = Math.max(1, Math.min(input.maxResults ?? 8, 20));
+  const messageIdentifier = escapeXml(crypto.randomUUID());
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<OJP xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns="http://www.siri.org.uk/siri" version="2.0" xmlns:ojp="http://www.vdv.de/ojp">
+<OJP xmlns="http://www.vdv.de/ojp" xmlns:siri="http://www.siri.org.uk/siri" version="2.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <OJPRequest>
-    <ServiceRequest>
-      <RequestTimestamp>${timestamp}</RequestTimestamp>
-      <RequestorRef>${requestorRef}</RequestorRef>
-      <ojp:OJPLocationInformationRequest>
-        <RequestTimestamp>${timestamp}</RequestTimestamp>
-        <MessageIdentifier>${crypto.randomUUID()}</MessageIdentifier>
-        <ojp:InitialInput>
-          <ojp:LocationName>${escapeXml(input.query)}</ojp:LocationName>
-        </ojp:InitialInput>
-        <ojp:Restrictions>
-          <ojp:Type>stop</ojp:Type>
-          <ojp:NumberOfResults>${maxResults}</ojp:NumberOfResults>
-          <ojp:IncludePtModes>true</ojp:IncludePtModes>
-        </ojp:Restrictions>
-      </ojp:OJPLocationInformationRequest>
-    </ServiceRequest>
+    <siri:ServiceRequest>
+      <siri:RequestTimestamp>${timestamp}</siri:RequestTimestamp>
+      <siri:RequestorRef>${requestorRef}</siri:RequestorRef>
+      <OJPLocationInformationRequest>
+        <siri:RequestTimestamp>${timestamp}</siri:RequestTimestamp>
+        <siri:MessageIdentifier>${messageIdentifier}</siri:MessageIdentifier>
+        <InitialInput>
+          <Name>${escapeXml(input.query)}</Name>
+        </InitialInput>
+        <Restrictions>
+          <Type>stop</Type>
+          <NumberOfResults>${maxResults}</NumberOfResults>
+          <IncludePtModes>true</IncludePtModes>
+        </Restrictions>
+      </OJPLocationInformationRequest>
+    </siri:ServiceRequest>
   </OJPRequest>
 </OJP>`;
 }
@@ -375,27 +385,23 @@ function textContent(xml: string, localName: string): string | null {
 
 function placeRefXml(place: SwissOpenDataPlace): string {
   if (place.id) {
-    return `<ojp:PlaceRef>
-            <ojp:StopPlaceRef>${escapeXml(place.id)}</ojp:StopPlaceRef>
-            <ojp:GeoPosition>
-              <Longitude>${place.coordinates[0]}</Longitude>
-              <Latitude>${place.coordinates[1]}</Latitude>
-            </ojp:GeoPosition>
-            <ojp:LocationName>
-              <ojp:Text>${escapeXml(place.name)}</ojp:Text>
-            </ojp:LocationName>
-          </ojp:PlaceRef>`;
+    return `<PlaceRef>
+            <StopPlaceRef>${escapeXml(place.id)}</StopPlaceRef>
+            <Name>
+              <Text>${escapeXml(place.name)}</Text>
+            </Name>
+          </PlaceRef>`;
   }
 
-  return `<ojp:PlaceRef>
-            <ojp:GeoPosition>
-              <Longitude>${place.coordinates[0]}</Longitude>
-              <Latitude>${place.coordinates[1]}</Latitude>
-            </ojp:GeoPosition>
-            <ojp:LocationName>
-              <ojp:Text>${escapeXml(place.name)}</ojp:Text>
-            </ojp:LocationName>
-          </ojp:PlaceRef>`;
+  return `<PlaceRef>
+            <GeoPosition>
+              <siri:Longitude>${place.coordinates[0]}</siri:Longitude>
+              <siri:Latitude>${place.coordinates[1]}</siri:Latitude>
+            </GeoPosition>
+            <Name>
+              <Text>${escapeXml(place.name)}</Text>
+            </Name>
+          </PlaceRef>`;
 }
 
 function trainCodeFromTripResult(tripResult: string): string {
@@ -455,6 +461,14 @@ function escapeXml(value: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
+}
+
+function sanitizeResponseSnippet(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .trim()
+    .slice(0, 600);
 }
 
 function decodeXml(value: string): string {
