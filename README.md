@@ -124,6 +124,8 @@ The compose file stores persistent data under `./data`:
 - `./data/postgres`: PostgreSQL/PostGIS database files.
 - `./data/exports`: generated PNG export files.
 
+The `init-permissions` helper service runs once before the app starts. It creates `./data/exports` and sets it writable for the non-root Next.js user inside the app container, so you should not need to run `chown` manually for PNG exports.
+
 Start the stack:
 
 ```bash

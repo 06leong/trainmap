@@ -1,4 +1,13 @@
 services:
+  init-permissions:
+    image: alpine:3.20
+    restart: "no"
+    command: >
+      sh -c "mkdir -p /data/exports && chown -R 1001:1001 /data/exports"
+    volumes:
+      # The Next.js app runs as UID 1001. This one-shot helper makes the bind mount writable.
+      - ./data/exports:/data/exports
+
   app:
     image: ghcr.io/06leong/trainmap:0.1
     restart: unless-stopped
@@ -21,6 +30,8 @@ services:
       NEXT_PUBLIC_MAP_STYLE_LIGHT: https://tiles.openfreemap.org/styles/bright
       NEXT_PUBLIC_MAP_STYLE_DARK: https://tiles.openfreemap.org/styles/liberty
     depends_on:
+      init-permissions:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
     ports:
