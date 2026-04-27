@@ -1,5 +1,12 @@
 import type { LineStringGeometry, Trip, TripStop, TripStopInput } from "@trainmap/domain";
-import { createSwissOpenDataAdapter, listTimetableProviders, type SwissOpenDataRouteOption } from "@trainmap/timetable-adapters";
+import {
+  createSwissOpenDataAdapter,
+  listTimetableProviders,
+  type StationSearchResult,
+  type SwissOpenDataAdapter,
+  type SwissOpenDataPlace,
+  type SwissOpenDataRouteOption
+} from "@trainmap/timetable-adapters";
 
 export interface SwissOpenDataRefinement {
   stops: TripStopInput[];
@@ -12,12 +19,43 @@ export function isSwissOpenDataConfigured(): boolean {
   return Boolean(process.env.SWISS_OPEN_DATA_API_KEY?.trim());
 }
 
-export async function refineTripWithSwissOpenData(trip: Trip): Promise<SwissOpenDataRefinement> {
+export function getSwissOpenDataAdapter(): SwissOpenDataAdapter {
   const apiKey = process.env.SWISS_OPEN_DATA_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("SWISS_OPEN_DATA_API_KEY is not configured.");
   }
 
+  const metadata = listTimetableProviders().find((provider) => provider.id === "swiss_open_data");
+  if (!metadata) {
+    throw new Error("Swiss Open Data provider metadata is not registered.");
+  }
+
+  return createSwissOpenDataAdapter(metadata, {
+    apiKey,
+    endpoint: process.env.SWISS_OPEN_DATA_OJP_ENDPOINT,
+    requestorRef: process.env.SWISS_OPEN_DATA_REQUESTOR_REF ?? "trainmap_prod",
+    userAgent: process.env.SWISS_OPEN_DATA_USER_AGENT ?? "trainmap/0.1"
+  });
+}
+
+export async function searchSwissOpenDataStations(query: string): Promise<StationSearchResult[]> {
+  if (query.trim().length < 2) {
+    return [];
+  }
+
+  return getSwissOpenDataAdapter().searchStations(query.trim());
+}
+
+export async function searchSwissOpenDataRoutes(input: {
+  origin: SwissOpenDataPlace;
+  destination: SwissOpenDataPlace;
+  departureAt: string;
+  numberOfResults?: number;
+}): Promise<SwissOpenDataRouteOption[]> {
+  return getSwissOpenDataAdapter().searchRoute(input);
+}
+
+export async function refineTripWithSwissOpenData(trip: Trip): Promise<SwissOpenDataRefinement> {
   const sortedStops = [...trip.stops].sort((a, b) => a.sequence - b.sequence);
   const origin = sortedStops[0];
   const destination = sortedStops[sortedStops.length - 1];
@@ -26,24 +64,14 @@ export async function refineTripWithSwissOpenData(trip: Trip): Promise<SwissOpen
     throw new Error("At least two trip stops are required before Swiss Open Data refinement.");
   }
 
-  const metadata = listTimetableProviders().find((provider) => provider.id === "swiss_open_data");
-  if (!metadata) {
-    throw new Error("Swiss Open Data provider metadata is not registered.");
-  }
-
-  const adapter = createSwissOpenDataAdapter(metadata, {
-    apiKey,
-    endpoint: process.env.SWISS_OPEN_DATA_OJP_ENDPOINT,
-    requestorRef: process.env.SWISS_OPEN_DATA_REQUESTOR_REF ?? "trainmap_prod",
-    userAgent: process.env.SWISS_OPEN_DATA_USER_AGENT ?? "trainmap/0.1"
-  });
-
-  const options = await adapter.searchRoute({
+  const options = await searchSwissOpenDataRoutes({
     origin: {
+      id: origin.stationId,
       name: origin.stationName,
       coordinates: origin.coordinates
     },
     destination: {
+      id: destination.stationId,
       name: destination.stationName,
       coordinates: destination.coordinates
     },
@@ -88,7 +116,7 @@ function toTripStopInputs(stops: TripStop[]): TripStopInput[] {
   }));
 }
 
-function estimateDistanceKm(geometry: LineStringGeometry): number {
+export function estimateDistanceKm(geometry: LineStringGeometry): number {
   let distance = 0;
   for (let index = 0; index < geometry.coordinates.length - 1; index += 1) {
     distance += distanceBetween(geometry.coordinates[index], geometry.coordinates[index + 1]);

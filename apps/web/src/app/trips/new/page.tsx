@@ -14,11 +14,18 @@ export default function NewTripPage() {
       <PageHeader
         eyebrow="Add or edit trip"
         title="Create a trip"
-        description="Start manually or query a timetable adapter, pick a train, import the stop sequence, then generate editable route geometry."
+        description="Search Swiss Open Data OJP, pick a train, preview stops and geometry, then save the trip to PostGIS."
       />
-      <div className="grid gap-5 p-5 xl:grid-cols-[0.9fr_1.1fr] lg:p-8">
-        {repository ? <TripForm /> : <DatabaseSetupNotice />}
-        <ScheduleAssistant />
+      <div className="space-y-5 p-5 lg:p-8">
+        {repository ? <ScheduleAssistant /> : <DatabaseSetupNotice />}
+        {repository ? (
+          <details className="border-t border-black/10 pt-5">
+            <summary className="cursor-pointer font-display text-2xl text-ink">Manual trip draft</summary>
+            <div className="mt-4">
+              <TripForm />
+            </div>
+          </details>
+        ) : null}
       </div>
     </div>
   );

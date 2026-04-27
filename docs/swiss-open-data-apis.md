@@ -67,6 +67,8 @@ Required environment:
 
 - `SWISS_OPEN_DATA_API_KEY`
 
+Use the API Manager `TOKEN` value as `SWISS_OPEN_DATA_API_KEY`. The `TOKEN HASH` is not sent to the API and is not used by trainmap.
+
 Optional environment:
 
 - `SWISS_OPEN_DATA_OJP_ENDPOINT`

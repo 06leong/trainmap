@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { getTimetableAdapter, listTimetableProviders } from "./adapters";
-import { buildSwissOjpTripRequest, createSwissOpenDataAdapter, parseSwissOjpTripResponse } from "./swiss-open-data";
+import {
+  buildSwissOjpLocationInformationRequest,
+  buildSwissOjpTripRequest,
+  createSwissOpenDataAdapter,
+  parseSwissOjpLocationInformationResponse,
+  parseSwissOjpTripResponse
+} from "./swiss-open-data";
 
 describe("timetable adapters", () => {
   it("lists Europe-first provider adapters with stable capabilities", () => {
@@ -41,6 +47,23 @@ describe("timetable adapters", () => {
     expect(xml).toContain("<ojp:IncludeLegProjection>true</ojp:IncludeLegProjection>");
     expect(xml).toContain("<ojp:IncludeIntermediateStops>true</ojp:IncludeIntermediateStops>");
     expect(xml).toContain("<ojp:PtMode>rail</ojp:PtMode>");
+  });
+
+  it("builds and parses Swiss OJP location search requests", () => {
+    const xml = buildSwissOjpLocationInformationRequest({
+      requestorRef: "trainmap_test",
+      query: "Zurich HB"
+    });
+    const stations = parseSwissOjpLocationInformationResponse(sampleSwissOjpLocationResponse);
+
+    expect(xml).toContain("<ojp:OJPLocationInformationRequest>");
+    expect(xml).toContain("<ojp:LocationName>Zurich HB</ojp:LocationName>");
+    expect(stations[0]).toEqual({
+      id: "8503000",
+      name: "Zürich HB",
+      countryCode: "CH",
+      coordinates: [8.5402, 47.3782]
+    });
   });
 
   it("parses Swiss OJP stops and projected geometry", () => {
@@ -144,5 +167,27 @@ const sampleSwissOjpResponse = `<?xml version="1.0" encoding="UTF-8"?>
         </ojp:Trip>
       </ojp:TripResult>
     </ojp:OJPTripDelivery>
+  </siri:ServiceDelivery>
+</siri:OJPResponse>`;
+
+const sampleSwissOjpLocationResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<siri:OJPResponse xmlns:siri="http://www.siri.org.uk/siri" xmlns:ojp="http://www.vdv.de/ojp">
+  <siri:ServiceDelivery>
+    <ojp:OJPLocationInformationDelivery>
+      <ojp:Location>
+        <ojp:Location>
+          <ojp:StopPlace>
+            <ojp:StopPlaceRef>8503000</ojp:StopPlaceRef>
+            <ojp:StopPlaceName><ojp:Text>Zürich HB</ojp:Text></ojp:StopPlaceName>
+          </ojp:StopPlace>
+          <ojp:LocationName><ojp:Text>Zürich HB</ojp:Text></ojp:LocationName>
+          <ojp:GeoPosition>
+            <siri:Longitude>8.5402</siri:Longitude>
+            <siri:Latitude>47.3782</siri:Latitude>
+          </ojp:GeoPosition>
+          <ojp:Complete>true</ojp:Complete>
+        </ojp:Location>
+      </ojp:Location>
+    </ojp:OJPLocationInformationDelivery>
   </siri:ServiceDelivery>
 </siri:OJPResponse>`;

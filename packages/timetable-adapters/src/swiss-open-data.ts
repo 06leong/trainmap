@@ -15,15 +15,15 @@ export interface SwissOpenDataRouteOption extends TimetableTripOption {
   rawResultId: string;
 }
 
+export interface SwissOpenDataPlace {
+  id?: string;
+  name: string;
+  coordinates: Coordinate;
+}
+
 export interface SwissOpenDataSearchInput {
-  origin: {
-    name: string;
-    coordinates: Coordinate;
-  };
-  destination: {
-    name: string;
-    coordinates: Coordinate;
-  };
+  origin: SwissOpenDataPlace;
+  destination: SwissOpenDataPlace;
   departureAt: string;
   numberOfResults?: number;
 }
@@ -52,8 +52,14 @@ export class SwissOpenDataAdapter implements TimetableAdapter {
     return this.metadata;
   }
 
-  async searchStations(_query: string): Promise<StationSearchResult[]> {
-    return [];
+  async searchStations(query: string): Promise<StationSearchResult[]> {
+    const requestXml = buildSwissOjpLocationInformationRequest({
+      query,
+      requestorRef: this.requestorRef
+    });
+
+    const response = await this.postXml(requestXml);
+    return parseSwissOjpLocationInformationResponse(await response.text());
   }
 
   async searchTrips(input: {
@@ -77,6 +83,11 @@ export class SwissOpenDataAdapter implements TimetableAdapter {
       requestorRef: this.requestorRef
     });
 
+    const response = await this.postXml(requestXml);
+    return parseSwissOjpTripResponse(await response.text());
+  }
+
+  private async postXml(requestXml: string): Promise<Response> {
     const response = await this.fetchImpl(this.endpoint, {
       method: "POST",
       headers: {
@@ -91,7 +102,7 @@ export class SwissOpenDataAdapter implements TimetableAdapter {
       throw new Error(`Swiss Open Data OJP request failed with HTTP ${response.status}.`);
     }
 
-    return parseSwissOjpTripResponse(await response.text());
+    return response;
   }
 }
 
@@ -138,6 +149,67 @@ export function buildSwissOjpTripRequest(input: SwissOpenDataSearchInput & { req
     </ServiceRequest>
   </OJPRequest>
 </OJP>`;
+}
+
+export function buildSwissOjpLocationInformationRequest(input: {
+  query: string;
+  requestorRef?: string;
+  maxResults?: number;
+}): string {
+  const timestamp = new Date().toISOString();
+  const requestorRef = escapeXml(input.requestorRef ?? defaultRequestorRef);
+  const maxResults = Math.max(1, Math.min(input.maxResults ?? 8, 20));
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<OJP xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns="http://www.siri.org.uk/siri" version="2.0" xmlns:ojp="http://www.vdv.de/ojp">
+  <OJPRequest>
+    <ServiceRequest>
+      <RequestTimestamp>${timestamp}</RequestTimestamp>
+      <RequestorRef>${requestorRef}</RequestorRef>
+      <ojp:OJPLocationInformationRequest>
+        <RequestTimestamp>${timestamp}</RequestTimestamp>
+        <MessageIdentifier>${crypto.randomUUID()}</MessageIdentifier>
+        <ojp:InitialInput>
+          <ojp:LocationName>${escapeXml(input.query)}</ojp:LocationName>
+        </ojp:InitialInput>
+        <ojp:Restrictions>
+          <ojp:Type>stop</ojp:Type>
+          <ojp:NumberOfResults>${maxResults}</ojp:NumberOfResults>
+          <ojp:IncludePtModes>true</ojp:IncludePtModes>
+        </ojp:Restrictions>
+      </ojp:OJPLocationInformationRequest>
+    </ServiceRequest>
+  </OJPRequest>
+</OJP>`;
+}
+
+export function parseSwissOjpLocationInformationResponse(xml: string): StationSearchResult[] {
+  const results: StationSearchResult[] = [];
+  const stopPlaces = blocks(xml, "StopPlace");
+
+  for (const stopPlace of stopPlaces) {
+    const id = textContent(stopPlace, "StopPlaceRef") ?? textContent(stopPlace, "StopPointRef");
+    const stopPlaceName = textContent(stopPlace, "StopPlaceName");
+    if (!id) {
+      continue;
+    }
+
+    const nearbyXml = xml.slice(Math.max(0, xml.indexOf(id) - 500), xml.indexOf(id) + 1500);
+    const coordinates = coordinatesFromBlock(nearbyXml);
+
+    if (!coordinates) {
+      continue;
+    }
+
+    results.push({
+      id,
+      name: textContent(nearbyXml, "LocationName") ?? stopPlaceName ?? id,
+      countryCode: countryCodeFromRef(id),
+      coordinates
+    });
+  }
+
+  return dedupeStations(results).slice(0, 12);
 }
 
 export function parseSwissOjpTripResponse(xml: string): SwissOpenDataRouteOption[] {
@@ -301,7 +373,20 @@ function textContent(xml: string, localName: string): string | null {
   return values(xml, localName)[0] ?? null;
 }
 
-function placeRefXml(place: { name: string; coordinates: Coordinate }): string {
+function placeRefXml(place: SwissOpenDataPlace): string {
+  if (place.id) {
+    return `<ojp:PlaceRef>
+            <ojp:StopPlaceRef>${escapeXml(place.id)}</ojp:StopPlaceRef>
+            <ojp:GeoPosition>
+              <Longitude>${place.coordinates[0]}</Longitude>
+              <Latitude>${place.coordinates[1]}</Latitude>
+            </ojp:GeoPosition>
+            <ojp:LocationName>
+              <ojp:Text>${escapeXml(place.name)}</ojp:Text>
+            </ojp:LocationName>
+          </ojp:PlaceRef>`;
+  }
+
   return `<ojp:PlaceRef>
             <ojp:GeoPosition>
               <Longitude>${place.coordinates[0]}</Longitude>
@@ -321,13 +406,31 @@ function trainCodeFromTripResult(tripResult: string): string {
 }
 
 function countryCodeFromRef(ref: string): string {
-  if (ref.startsWith("ch:") || /^\d{7}$/.test(ref)) {
+  const uicCountryCodes: Record<string, string> = {
+    "80": "DE",
+    "81": "AT",
+    "82": "LU",
+    "83": "IT",
+    "84": "NL",
+    "85": "CH",
+    "87": "FR",
+    "88": "BE"
+  };
+
+  if (ref.startsWith("ch:")) {
     return "CH";
+  }
+  if (/^\d{7}$/.test(ref)) {
+    return uicCountryCodes[ref.slice(0, 2)] ?? "XX";
   }
   if (/^[a-z]{2}:/i.test(ref)) {
     return ref.slice(0, 2).toUpperCase();
   }
   return "XX";
+}
+
+function dedupeStations(stations: StationSearchResult[]): StationSearchResult[] {
+  return [...new Map(stations.map((station) => [station.id, station])).values()];
 }
 
 function dedupeCoordinates(coordinates: Coordinate[]): Coordinate[] {
