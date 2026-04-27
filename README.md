@@ -99,13 +99,12 @@ On a VPS, a simple layout is:
   db/migrations/
   db/seeds/
   data/postgres/
-  data/exports/
 ```
 
 Create the directories:
 
 ```bash
-sudo mkdir -p /home/docker/trainmap/db/migrations /home/docker/trainmap/db/seeds /home/docker/trainmap/data/postgres /home/docker/trainmap/data/exports
+sudo mkdir -p /home/docker/trainmap/db/migrations /home/docker/trainmap/db/seeds /home/docker/trainmap/data/postgres
 cd /home/docker/trainmap
 ```
 
@@ -119,12 +118,21 @@ Edit `/home/docker/trainmap/docker-compose.yml` before starting:
 - `app.environment.NEXT_PUBLIC_APP_URL`: set your public domain, for example `https://trainmap.example.com`.
 - `app.ports`: the default is `172.18.0.1:4396:3000` for Nginx Proxy Manager upstream `http://172.18.0.1:4396`. Change the gateway IP or host port if your VPS uses different values.
 
-The compose file stores persistent data under `./data`:
+The compose file stores PostgreSQL data under `./data` and PNG exports in a Docker-managed named volume:
 
 - `./data/postgres`: PostgreSQL/PostGIS database files.
-- `./data/exports`: generated PNG export files.
+- `trainmap_exports`: generated PNG export files, served through the app download endpoint.
 
-The `init-permissions` helper service runs once before the app starts. It creates `./data/exports` and sets it writable for the non-root Next.js user inside the app container, so you should not need to run `chown` manually for PNG exports.
+The export volume is intentionally not a host bind mount. The app container runs as a non-root user, and a Docker-managed volume avoids host filesystem ownership problems without requiring `chown` steps during installation.
+
+To inspect or back up generated PNG files on the VPS:
+
+```bash
+docker run --rm \
+  -v trainmap_exports:/exports:ro \
+  -v "$PWD/data/export-backup:/backup" \
+  alpine:3.20 sh -c "cp -a /exports/. /backup/"
+```
 
 Start the stack:
 
