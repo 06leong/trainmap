@@ -30,6 +30,7 @@ export function TransportMap({
   initialBaseStyle?: keyof typeof baseStyles;
   frame?: "app" | "export";
 }) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [baseStyle, setBaseStyle] = useState<keyof typeof baseStyles>(initialBaseStyle);
@@ -86,30 +87,51 @@ export function TransportMap({
 
     setLoaded(false);
     setMapReady(false);
+    wrapperRef.current?.setAttribute("data-map-ready", "false");
+    let readyTimer: number | undefined;
+    const markMapReady = () => {
+      setMapReady(true);
+      wrapperRef.current?.setAttribute("data-map-ready", "true");
+    };
+    const markMapReadyAfterPaint = () => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(markMapReady);
+      });
+    };
+
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: baseStyles[baseStyle],
       center: [8.5, 47.3],
       zoom: 4,
-      attributionControl: { compact: true }
+      attributionControl: frame === "export" ? false : { compact: true }
     });
 
     mapRef.current = map;
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+    if (showControls) {
+      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+    }
+
+    if (frame === "export") {
+      readyTimer = window.setTimeout(markMapReady, 12_000);
+    }
+
     map.on("load", () => {
       setLoaded(true);
       addBusinessLayers(map, routeData, stationData);
       fitToTrips(map, routeData);
-      map.once("idle", () => {
-        setMapReady(true);
-      });
+      map.once("render", markMapReadyAfterPaint);
+      map.triggerRepaint();
     });
 
     return () => {
+      if (readyTimer) {
+        window.clearTimeout(readyTimer);
+      }
       map.remove();
       mapRef.current = null;
     };
-  }, [baseStyle, routeData, stationData]);
+  }, [baseStyle, frame, routeData, showControls, stationData]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -126,6 +148,7 @@ export function TransportMap({
 
   return (
     <div
+      ref={wrapperRef}
       data-map-ready={mapReady ? "true" : "false"}
       className={cn(
         "relative overflow-hidden bg-ink",
