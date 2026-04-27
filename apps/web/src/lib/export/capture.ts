@@ -33,11 +33,17 @@ export async function captureExportPng(input: CaptureExportInput): Promise<Captu
     });
     await page.goto(input.renderUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
-    await page.locator("[data-export-ready='true']").waitFor({ timeout: 30_000 }).catch(() => undefined);
-    await page.screenshot({
+    await page.evaluate(() => document.fonts?.ready).catch(() => undefined);
+    const exportCanvas = page.locator("[data-export-ready='true']");
+    await exportCanvas.waitFor({ timeout: 30_000 });
+    const maps = page.locator("[data-map-ready]");
+    if ((await maps.count()) > 0) {
+      await page.locator("[data-map-ready='true']").first().waitFor({ timeout: 45_000 });
+      await page.waitForTimeout(500);
+    }
+    await exportCanvas.screenshot({
       path: outputPath,
-      type: "png",
-      fullPage: false
+      type: "png"
     });
   } finally {
     await browser.close();

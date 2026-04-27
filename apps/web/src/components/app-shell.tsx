@@ -18,6 +18,10 @@ const navItems = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
+  if (pathname.startsWith("/export/render")) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="min-h-screen">
       <aside className="fixed left-0 top-0 z-30 hidden h-screen w-64 border-r border-black/10 bg-[#f8f5ef]/92 px-4 py-5 backdrop-blur-xl lg:block">

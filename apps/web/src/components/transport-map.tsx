@@ -17,17 +17,24 @@ export function TransportMap({
   trips,
   selectedTripId,
   heightClass = "h-[520px]",
-  showControls = true
+  showControls = true,
+  showCaption = true,
+  initialBaseStyle = "light",
+  frame = "app"
 }: {
   trips: Trip[];
   selectedTripId?: string;
   heightClass?: string;
   showControls?: boolean;
+  showCaption?: boolean;
+  initialBaseStyle?: keyof typeof baseStyles;
+  frame?: "app" | "export";
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const [baseStyle, setBaseStyle] = useState<keyof typeof baseStyles>("light");
+  const [baseStyle, setBaseStyle] = useState<keyof typeof baseStyles>(initialBaseStyle);
   const [loaded, setLoaded] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const visibleTrips = useMemo(
     () => (selectedTripId ? trips.filter((trip) => trip.id === selectedTripId) : trips),
     [selectedTripId, trips]
@@ -78,6 +85,7 @@ export function TransportMap({
     }
 
     setLoaded(false);
+    setMapReady(false);
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: baseStyles[baseStyle],
@@ -92,6 +100,9 @@ export function TransportMap({
       setLoaded(true);
       addBusinessLayers(map, routeData, stationData);
       fitToTrips(map, routeData);
+      map.once("idle", () => {
+        setMapReady(true);
+      });
     });
 
     return () => {
@@ -114,7 +125,14 @@ export function TransportMap({
   }, [loaded, routeData, stationData]);
 
   return (
-    <div className={cn("relative overflow-hidden rounded-md border border-black/10 bg-ink", heightClass)}>
+    <div
+      data-map-ready={mapReady ? "true" : "false"}
+      className={cn(
+        "relative overflow-hidden bg-ink",
+        frame === "app" ? "rounded-md border border-black/10" : "rounded-none border-0",
+        heightClass
+      )}
+    >
       <div ref={containerRef} className="h-full w-full" />
       {showControls ? (
         <div className="absolute left-3 top-3 flex rounded-md border border-black/10 bg-[#f8f5ef]/90 p-1 shadow-panel backdrop-blur">
@@ -133,9 +151,11 @@ export function TransportMap({
           ))}
         </div>
       ) : null}
-      <div className="absolute bottom-3 left-3 rounded-md border border-black/10 bg-[#f8f5ef]/90 px-3 py-2 text-xs text-black/62 shadow-panel backdrop-blur">
+      {showCaption ? (
+        <div className="absolute bottom-3 left-3 rounded-md border border-black/10 bg-[#f8f5ef]/90 px-3 py-2 text-xs text-black/62 shadow-panel backdrop-blur">
         Business route, station, label, and coverage layers are independent from the basemap.
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
