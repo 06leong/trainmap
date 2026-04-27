@@ -27,6 +27,16 @@ services:
       SWISS_OPEN_DATA_OJP_ENDPOINT: https://api.opentransportdata.swiss/ojp20
       SWISS_OPEN_DATA_REQUESTOR_REF: trainmap_prod
       SWISS_OPEN_DATA_USER_AGENT: trainmap/0.1
+
+      # Optional, not used by Add Trip yet: train composition details such as vehicles, sectors, and accessibility.
+      # Requires a separate Train Formation Service TOKEN from opentransportdata.swiss.
+      # SWISS_TRAIN_FORMATION_API_KEY: replace-with-formation-token
+      SWISS_TRAIN_FORMATION_API_BASE_URL: https://api.opentransportdata.swiss/formation/v2
+
+      # Optional, not used by Add Trip yet: GTFS-RT Trip Updates. Use with matching GTFS Static data.
+      # Requires a separate GTFS Realtime TOKEN from opentransportdata.swiss.
+      # SWISS_GTFS_RT_API_KEY: replace-with-gtfs-rt-token
+      SWISS_GTFS_RT_API_URL: https://api.opentransportdata.swiss/la/gtfs-rt
     depends_on:
       postgres:
         condition: service_healthy

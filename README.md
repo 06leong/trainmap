@@ -62,8 +62,12 @@ Required runtime environment variables:
 - `SWISS_OPEN_DATA_OJP_ENDPOINT`: optional OJP endpoint override, default `https://api.opentransportdata.swiss/ojp20`.
 - `SWISS_OPEN_DATA_REQUESTOR_REF`: optional OJP requestor reference, default `trainmap_prod` in the app. Use a suffix such as `_test`, `_int`, or `_prod`.
 - `SWISS_OPEN_DATA_USER_AGENT`: optional User-Agent for Swiss Open Data API calls, default `trainmap/0.1`.
+- `SWISS_TRAIN_FORMATION_API_KEY`: optional Train Formation Service token for future train composition enrichment.
+- `SWISS_TRAIN_FORMATION_API_BASE_URL`: optional Train Formation Service base URL, default `https://api.opentransportdata.swiss/formation/v2`.
+- `SWISS_GTFS_RT_API_KEY`: optional GTFS Realtime token for future Trip Updates ingestion.
+- `SWISS_GTFS_RT_API_URL`: optional GTFS Realtime Trip Updates URL, default `https://api.opentransportdata.swiss/la/gtfs-rt`.
 
-Only the API Manager `TOKEN` is used. The `TOKEN HASH` shown in the API Manager is not needed by trainmap and should not be configured in compose.
+Only API Manager `TOKEN` values are used. The `TOKEN HASH` shown in the API Manager is not needed by trainmap and should not be configured in compose.
 
 After setting `SWISS_OPEN_DATA_API_KEY`, you can smoke-test OJP 2.0 outside the UI:
 
@@ -132,6 +136,8 @@ Edit `/home/docker/trainmap/docker-compose.yml` before starting:
 - `postgres.environment.POSTGRES_PASSWORD`: use the same strong password as `DATABASE_URL`.
 - `app.environment.NEXT_PUBLIC_APP_URL`: set your public domain, for example `https://trainmap.example.com`.
 - `app.environment.SWISS_OPEN_DATA_API_KEY`: optional. Set this to the API Manager `TOKEN`, not `TOKEN HASH`, to enable Swiss OJP station search, schedule-assisted trip creation, and route refinement.
+- `app.environment.SWISS_TRAIN_FORMATION_API_KEY`: optional. Set this only after subscribing to Train Formation Service; it is reserved for train composition details and is not required for Add Trip.
+- `app.environment.SWISS_GTFS_RT_API_KEY`: optional. Set this only after subscribing to GTFS Realtime; it is reserved for future real-time Trip Updates and must be paired with matching GTFS Static data.
 - `app.ports`: the default is `172.18.0.1:4396:3000` for Nginx Proxy Manager upstream `http://172.18.0.1:4396`. Change the gateway IP or host port if your VPS uses different values.
 
 The compose file stores PostgreSQL data under `./data` and PNG exports in a Docker-managed named volume:
@@ -183,6 +189,7 @@ docker compose exec -T postgres \
 - Stop sequence is the canonical route backbone.
 - `@trainmap/geo` provides `getRoute(...)`, `loadConnectionsOrSetManualVias(...)`, route confidence, fitBounds helpers, and geometry version creation.
 - Swiss Open Data OJP 2.0 can create and refine trips with provider stop sequences and leg projection / track section coordinates when `SWISS_OPEN_DATA_API_KEY` is configured.
+- Swiss Open Data Train Formation Service and GTFS Realtime tokens are configurable, but they are intentionally not part of the Add Trip planning path yet. Formation is for train composition; GTFS-RT is for real-time updates tied to a matching GTFS Static feed.
 - The Add Trip page uses OJP 2.0 server-side for station search, connection search, stop sequence import, map preview, and provider geometry creation.
 - CSV import preserves raw rows and separates matched, fuzzy matched, unmatched, and invalid rows.
 - Timetable adapters expose stable provider contracts for `swiss_open_data`, `db_api`, `ns_api`, and `generic_gtfs`.

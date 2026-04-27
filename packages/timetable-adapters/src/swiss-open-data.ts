@@ -585,7 +585,19 @@ function combineServiceCode(lineName: string | null, journeyNumber: string | nul
 }
 
 function operatorRefLabel(operatorRef: string | null): string | null {
-  return operatorRef ? `Operator ${operatorRef}` : null;
+  if (!operatorRef) {
+    return null;
+  }
+
+  const normalizedRef = operatorRef.trim();
+  const numericRef =
+    normalizedRef.match(/sboid:(\d+)$/i)?.[1] ?? normalizedRef.match(/(?:^|:)(\d+)$/)?.[1] ?? normalizedRef.match(/^\d+$/)?.[0];
+  if (!numericRef) {
+    return null;
+  }
+
+  const organizationNumber = numericRef.replace(/^0+/, "");
+  return knownSwissBusinessOrganisationNames[organizationNumber] ?? null;
 }
 
 function transferCountFromTripResult(tripResult: string, timedLegCount: number): number {
@@ -599,6 +611,23 @@ function transferCountFromTripResult(tripResult: string, timedLegCount: number):
 function uniqueValues(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
+
+const knownSwissBusinessOrganisationNames: Record<string, string> = {
+  "11": "Swiss Federal Railways SBB",
+  "12": "Schweizerische Bundesbahnen SBB Regionalverkehr",
+  "22": "Appenzeller Bahnen",
+  "29": "Transports de la region Morges-Biere-Cossonay",
+  "33": "BLS",
+  "53": "Transports publics fribourgeois",
+  "64": "Montreux-Oberland Bernois",
+  "65": "Thurbo",
+  "72": "Rhatische Bahn",
+  "82": "Schweizerische Suedostbahn SOB",
+  "86": "Zentralbahn",
+  "91": "BLS Fernverkehr",
+  "420": "Treni Regionali Ticino Lombardia",
+  "955": "Trasporti Pubblici Luganesi SA"
+};
 
 function countryCodeFromRef(ref: string): string {
   const uicCountryCodes: Record<string, string> = {

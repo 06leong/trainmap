@@ -8,7 +8,7 @@ Official API-format datasets currently listed by opentransportdata.swiss:
 
 2. Train Formation Service (Train Composition)
    - Use: train composition by vehicle, stop, or full formation endpoints.
-   - trainmap status: later train detail enrichment, not route geometry.
+   - trainmap status: configured for later train detail enrichment, not route geometry or Add Trip planning.
 
 3. Beta: Service for requesting price information via OJP Fare
    - Use: non-binding Swiss public transport fare calculation through OJP/NOVA.
@@ -52,7 +52,7 @@ Official API-format datasets currently listed by opentransportdata.swiss:
 
 13. GTFS Realtime
     - Use: GTFS-RT Trip Updates, linked to matching GTFS static data.
-    - trainmap status: later real-time updates once GTFS static ingestion exists.
+    - trainmap status: configured for later real-time updates once GTFS static ingestion exists.
 
 ## OJP 2.0 implementation choice
 
@@ -75,6 +75,8 @@ The OJP 2.0 request uses:
 - `Content-Type: application/xml`
 - a descriptive `User-Agent`
 
+OJP 2.0 `OperatorRef` values reference Business Organisations by `organisationNumber`. The app maps known numeric refs through the official Business Organisations data so values such as `11` and `955` display as `Swiss Federal Railways SBB` and `Trasporti Pubblici Luganesi SA` instead of leaking `Operator 11` labels.
+
 No token hash is needed. To verify a token from a shell after building the timetable adapter package:
 
 ```bash
@@ -87,3 +89,43 @@ Optional environment:
 - `SWISS_OPEN_DATA_OJP_ENDPOINT`
 - `SWISS_OPEN_DATA_REQUESTOR_REF`
 - `SWISS_OPEN_DATA_USER_AGENT`
+
+## Train Formation Service configuration
+
+Train Formation Service is a REST/JSON service for train composition data, not a route planner. The current official documentation says to use the versioned `/formation/v2` endpoints. The main endpoint variants are:
+
+- stop-based: `/formations_stop_based`
+- vehicle-based: `/formations_vehicle_based`
+- full: `/formations_full`
+- health: `/health`
+
+Typical query parameters are:
+
+- `evu`: supported railway undertaking, for example `SBBP`, `BLSP`, `SOB`, `THURBO`, `RhB`, `TPF`, `ZB`
+- `operationDate`: service date, not in the past for stop-based data
+- `trainNumber`: train number from timetable data
+
+Configured environment:
+
+- `SWISS_TRAIN_FORMATION_API_KEY`
+- `SWISS_TRAIN_FORMATION_API_BASE_URL`, default `https://api.opentransportdata.swiss/formation/v2`
+
+This token is separate from the OJP token. Use the API Manager `TOKEN` value only; the token hash is not used. The public limits page currently groups Train Formation Service with OJP/OJPFare/CKAN at 50 requests per minute and 20,000 requests per day per API key.
+
+## GTFS Realtime configuration
+
+GTFS Realtime Trip Updates are protobuf feeds for real-time delays, cancellations, and modified trips. They are not suitable as the first source for Add Trip route planning because the feed references GTFS Static IDs that change between GTFS versions. The app should only attach GTFS-RT data after it can match against the correct GTFS Static feed version.
+
+Configured environment:
+
+- `SWISS_GTFS_RT_API_KEY`
+- `SWISS_GTFS_RT_API_URL`, default `https://api.opentransportdata.swiss/la/gtfs-rt`
+
+Implementation notes for the future adapter:
+
+- send `Authorization: Bearer <TOKEN>`
+- prefer binary protobuf, not JSON, for production use
+- allow HTTP redirects
+- set a descriptive `User-Agent`
+- use `?format=JSON` only for diagnostics
+- respect the public GTFS-RT limit of 5 requests per minute per API key

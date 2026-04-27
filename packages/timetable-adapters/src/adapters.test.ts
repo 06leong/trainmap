@@ -105,7 +105,7 @@ describe("timetable adapters", () => {
     const [option] = parseSwissOjpTripResponse(sampleSwissOjpTransferResponse);
 
     expect(option.trainCode).toBe("IC 61 + EC 317");
-    expect(option.operatorName).toBe("SBB + Trenitalia");
+    expect(option.operatorName).toBe("Swiss Federal Railways SBB + Trasporti Pubblici Luganesi SA");
     expect(option.transferCount).toBe(1);
     expect(option.serviceSummary).toBe("1 transfer | IC 61 + EC 317");
     expect(option.stops.map((stop) => stop.stationName)).toEqual(["Bern", "Olten", "Lugano", "Milano Centrale"]);
@@ -285,7 +285,7 @@ const sampleSwissOjpTransferResponse = `<?xml version="1.0" encoding="UTF-8"?>
                 <PublishedServiceName><Text>IC</Text></PublishedServiceName>
                 <TrainNumber>61</TrainNumber>
                 <JourneyRef>ch:1:sjyid:ic-61</JourneyRef>
-                <Extension><OperatorName>SBB</OperatorName></Extension>
+                <siri:OperatorRef>11</siri:OperatorRef>
               </Service>
             </TimedLeg>
           </Leg>
@@ -314,7 +314,7 @@ const sampleSwissOjpTransferResponse = `<?xml version="1.0" encoding="UTF-8"?>
                 <PublishedServiceName><Text>EC</Text></PublishedServiceName>
                 <Extension><PublishedJourneyNumber>317</PublishedJourneyNumber></Extension>
                 <JourneyRef>ch:1:sjyid:ec-317</JourneyRef>
-                <Extension><OperatorName>Trenitalia</OperatorName></Extension>
+                <siri:OperatorRef>955</siri:OperatorRef>
               </Service>
             </TimedLeg>
           </Leg>
