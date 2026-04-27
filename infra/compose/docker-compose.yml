@@ -1,49 +1,52 @@
 services:
   app:
-    image: ${TRAINMAP_IMAGE:-ghcr.io/owner/trainmap:latest}
+    image: ghcr.io/06leong/trainmap:0.1
     restart: unless-stopped
     environment:
       NODE_ENV: production
       HOSTNAME: 0.0.0.0
-      PORT: ${TRAINMAP_INTERNAL_PORT:-3000}
-      DATABASE_URL: postgres://${POSTGRES_USER:-trainmap}:${POSTGRES_PASSWORD:-trainmap}@postgres:5432/${POSTGRES_DB:-trainmap}
+      PORT: 3000
+
+      # Change this password together with postgres.environment.POSTGRES_PASSWORD.
+      DATABASE_URL: postgres://trainmap:change-me@postgres:5432/trainmap
+
+      # Playwright runs inside the app container and captures the internal Next.js render route.
+      TRAINMAP_RENDER_BASE_URL: http://127.0.0.1:3000
       TRAINMAP_EXPORT_DIR: /app/storage/exports
-      TRAINMAP_RENDER_BASE_URL: http://127.0.0.1:${TRAINMAP_INTERNAL_PORT:-3000}
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://trainmap.example.com}
-      NEXT_PUBLIC_MAP_STYLE_LIGHT: ${NEXT_PUBLIC_MAP_STYLE_LIGHT:-https://tiles.openfreemap.org/styles/bright}
-      NEXT_PUBLIC_MAP_STYLE_DARK: ${NEXT_PUBLIC_MAP_STYLE_DARK:-https://tiles.openfreemap.org/styles/liberty}
+
+      # Change this to your public trainmap domain behind Nginx Proxy Manager.
+      NEXT_PUBLIC_APP_URL: https://trainmap.example.com
+
+      # MapLibre-compatible style URLs. Replace with your own MapTiler/OpenMapTiles styles if needed.
+      NEXT_PUBLIC_MAP_STYLE_LIGHT: https://tiles.openfreemap.org/styles/bright
+      NEXT_PUBLIC_MAP_STYLE_DARK: https://tiles.openfreemap.org/styles/liberty
     depends_on:
       postgres:
         condition: service_healthy
+    ports:
+      # Bind only to the Docker gateway address for Nginx Proxy Manager.
+      # NPM upstream target: http://172.18.0.1:4396
+      # Change 172.18.0.1 if your Docker gateway address is different.
+      - "172.18.0.1:4396:3000"
     volumes:
-      - ${TRAINMAP_EXPORTS_DATA:-./data/exports}:/app/storage/exports
-    expose:
-      - "${TRAINMAP_INTERNAL_PORT:-3000}"
-    networks:
-      - trainmap_internal
-      - reverse_proxy
+      - ./data/exports:/app/storage/exports
 
   postgres:
     image: postgis/postgis:16-3.4
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-trainmap}
-      POSTGRES_USER: ${POSTGRES_USER:-trainmap}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trainmap}
+      POSTGRES_DB: trainmap
+      POSTGRES_USER: trainmap
+
+      # Change this password together with app.environment.DATABASE_URL.
+      POSTGRES_PASSWORD: change-me
     volumes:
-      - ${TRAINMAP_POSTGRES_DATA:-./data/postgres}:/var/lib/postgresql/data
-      - ${TRAINMAP_MIGRATIONS_DIR:-./db/migrations}:/docker-entrypoint-initdb.d:ro
+      - ./data/postgres:/var/lib/postgresql/data
+
+      # These SQL files run only when ./data/postgres is initialized for the first time.
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trainmap} -d ${POSTGRES_DB:-trainmap}"]
+      test: ["CMD-SHELL", "pg_isready -U trainmap -d trainmap"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - trainmap_internal
-
-networks:
-  trainmap_internal:
-    internal: true
-  reverse_proxy:
-    external: true
-    name: ${REVERSE_PROXY_NETWORK:-proxy}

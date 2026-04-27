@@ -96,7 +96,6 @@ On a VPS, a simple layout is:
 ```bash
 /home/docker/trainmap/
   docker-compose.yml
-  .env
   db/migrations/
   db/seeds/
   data/postgres/
@@ -112,51 +111,27 @@ cd /home/docker/trainmap
 
 Copy `infra/compose/docker-compose.yml` to `/home/docker/trainmap/docker-compose.yml`, and copy `db/migrations` plus optional `db/seeds` into `/home/docker/trainmap/db`. The PostGIS container runs SQL files from `db/migrations` on first database initialization.
 
-Create an `.env` next to the compose file:
+Edit `/home/docker/trainmap/docker-compose.yml` before starting:
 
-```bash
-TRAINMAP_IMAGE=ghcr.io/<owner>/trainmap:latest
-POSTGRES_DB=trainmap
-POSTGRES_USER=trainmap
-POSTGRES_PASSWORD=change-me
-TRAINMAP_INTERNAL_PORT=3000
-NEXT_PUBLIC_APP_URL=https://trainmap.example.com
-NEXT_PUBLIC_MAP_STYLE_LIGHT=https://tiles.openfreemap.org/styles/bright
-NEXT_PUBLIC_MAP_STYLE_DARK=https://tiles.openfreemap.org/styles/liberty
-REVERSE_PROXY_NETWORK=proxy
-TRAINMAP_EXPORT_DIR=/app/storage/exports
-TRAINMAP_RENDER_BASE_URL=http://127.0.0.1:3000
-TRAINMAP_POSTGRES_DATA=./data/postgres
-TRAINMAP_EXPORTS_DATA=./data/exports
-TRAINMAP_MIGRATIONS_DIR=./db/migrations
-```
+- `app.image`: use `ghcr.io/06leong/trainmap:0.1` for the current stable version, `latest` for newest `main`, or a full git SHA tag for a pinned deployment.
+- `app.environment.DATABASE_URL`: replace `change-me` with a strong password.
+- `postgres.environment.POSTGRES_PASSWORD`: use the same strong password as `DATABASE_URL`.
+- `app.environment.NEXT_PUBLIC_APP_URL`: set your public domain, for example `https://trainmap.example.com`.
+- `app.ports`: the default is `172.18.0.1:4396:3000` for Nginx Proxy Manager upstream `http://172.18.0.1:4396`. Change the gateway IP or host port if your VPS uses different values.
 
-Set `TRAINMAP_IMAGE` to the image published by GitHub Actions. For the latest `main` build use:
+The compose file stores persistent data under `./data`:
 
-```bash
-TRAINMAP_IMAGE=ghcr.io/<owner>/trainmap:latest
-```
+- `./data/postgres`: PostgreSQL/PostGIS database files.
+- `./data/exports`: generated PNG export files.
 
-For a pinned deployment, use the SHA tag from the workflow run:
-
-```bash
-TRAINMAP_IMAGE=ghcr.io/<owner>/trainmap:<git-sha>
-```
-
-For the current version line, use:
-
-```bash
-TRAINMAP_IMAGE=ghcr.io/<owner>/trainmap:0.1
-```
-
-Ensure your existing reverse proxy is attached to the external Docker network named by `REVERSE_PROXY_NETWORK`, then start:
+Start the stack:
 
 ```bash
 cd /home/docker/trainmap
 docker compose up -d
 ```
 
-The app exposes only the internal service port to Docker networks. The stack intentionally does not include nginx.
+The stack intentionally does not include nginx. The compose file binds the app only on the Docker gateway address configured in `ports`, so it is intended to be reached by Nginx Proxy Manager rather than exposed publicly.
 
 If the GHCR package is private, log in on the VPS before pulling:
 
