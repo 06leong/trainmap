@@ -2,26 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
-import type { FeatureCollection, LineString, Point } from "geojson";
-import type { Coordinate, LineStringGeometry, Trip } from "@trainmap/domain";
-import { fitBoundsFromCoordinates, getGeometryForTripDetail } from "@trainmap/geo";
+import type { FeatureCollection, LineString } from "geojson";
+import type { Coordinate, Trip } from "@trainmap/domain";
+import { fitBoundsFromCoordinates } from "@trainmap/geo";
 import { cn } from "@trainmap/ui";
+import { buildTransportMapData, emptyTransportMapData, type TransportMapData } from "@/lib/transport-map-data";
 
 const baseStyles = {
   light: process.env.NEXT_PUBLIC_MAP_STYLE_LIGHT ?? "https://tiles.openfreemap.org/styles/bright",
   dark: process.env.NEXT_PUBLIC_MAP_STYLE_DARK ?? "https://tiles.openfreemap.org/styles/liberty",
   satellite: "https://api.maptiler.com/maps/hybrid/style.json?key=missing"
 } as const;
-
-const emptyRouteData: FeatureCollection<LineString> = {
-  type: "FeatureCollection",
-  features: []
-};
-
-const emptyStationData: FeatureCollection<Point> = {
-  type: "FeatureCollection",
-  features: []
-};
 
 export function TransportMap({
   trips,
@@ -51,37 +42,7 @@ export function TransportMap({
     [selectedTripId, trips]
   );
 
-  const routeData = useMemo<FeatureCollection<LineString>>(
-    () => ({
-      type: "FeatureCollection",
-      features: visibleTrips.flatMap(routeFeaturesForTrip)
-    }),
-    [visibleTrips]
-  );
-
-  const stationData = useMemo<FeatureCollection<Point>>(
-    () => ({
-      type: "FeatureCollection",
-      features: visibleTrips.flatMap((trip) => {
-        const stops = [...trip.stops].sort((a, b) => a.sequence - b.sequence);
-        return stops.map((stop, index) => ({
-          type: "Feature" as const,
-          properties: {
-            id: stop.id,
-            tripId: trip.id,
-            name: stop.stationName,
-            sequence: stop.sequence,
-            role: index === 0 ? "origin" : index === stops.length - 1 ? "destination" : "intermediate"
-          },
-          geometry: {
-            type: "Point" as const,
-            coordinates: stop.coordinates
-          }
-        }));
-      })
-    }),
-    [visibleTrips]
-  );
+  const mapData = useMemo(() => buildTransportMapData(visibleTrips), [visibleTrips]);
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -116,7 +77,7 @@ export function TransportMap({
 
     map.on("load", () => {
       setLoaded(true);
-      addBusinessLayers(map, emptyRouteData, emptyStationData);
+      addBusinessLayers(map, emptyTransportMapData);
       map.triggerRepaint();
     });
 
@@ -137,18 +98,15 @@ export function TransportMap({
 
     setMapReady(false);
     wrapperRef.current?.setAttribute("data-map-ready", "false");
-    const routeSource = map.getSource("trainmap-routes") as maplibregl.GeoJSONSource | undefined;
-    const stationSource = map.getSource("trainmap-stations") as maplibregl.GeoJSONSource | undefined;
-    routeSource?.setData(routeData);
-    stationSource?.setData(stationData);
-    fitToTrips(map, routeData);
+    setBusinessLayerData(map, mapData);
+    fitToTrips(map, mapData.routes);
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         setMapReady(true);
         wrapperRef.current?.setAttribute("data-map-ready", "true");
       });
     });
-  }, [loaded, routeData, stationData]);
+  }, [loaded, mapData]);
 
   return (
     <div
@@ -187,105 +145,6 @@ export function TransportMap({
   );
 }
 
-function routeFeaturesForTrip(trip: Trip) {
-  const routeSegments = routeSegmentsFromTrip(trip);
-  if (routeSegments.length > 0) {
-    return routeSegments.map((segment, index) => routeFeature(trip, segment.coordinates, index, routeSegments.length));
-  }
-
-  const geometry = getGeometryForTripDetail(trip);
-  if (geometry.coordinates.length < 2) {
-    return [];
-  }
-
-  return [routeFeature(trip, geometry.coordinates, 0, 1)];
-}
-
-function routeFeature(trip: Trip, coordinates: Coordinate[], segmentIndex: number, segmentCount: number) {
-  return {
-    type: "Feature" as const,
-    properties: {
-      id: `${trip.id}-${segmentIndex}`,
-      title: trip.title,
-      confidence: trip.geometry?.confidence ?? "inferred",
-      operator: trip.operatorName,
-      segmentIndex,
-      segmentCount
-    },
-    geometry: {
-      type: "LineString" as const,
-      coordinates
-    }
-  };
-}
-
-function routeSegmentsFromTrip(trip: Trip): Array<{ sequence: number; coordinates: Coordinate[] }> {
-  const routeSegments = trip.rawImportRow?.routeSegments;
-  if (!Array.isArray(routeSegments)) {
-    return [];
-  }
-
-  const parsedSegments: Array<{ sequence: number; coordinates: Coordinate[] }> = [];
-
-  for (const routeSegment of routeSegments) {
-    if (!routeSegment || typeof routeSegment !== "object") {
-      continue;
-    }
-    const record = routeSegment as Record<string, unknown>;
-    const coordinates = coordinatesFromRawRouteSegment(record);
-    if (coordinates.length < 2) {
-      continue;
-    }
-    parsedSegments.push({
-      sequence: typeof record.sequence === "number" ? record.sequence : parsedSegments.length + 1,
-      coordinates
-    });
-  }
-
-  return parsedSegments.sort((left, right) => left.sequence - right.sequence);
-}
-
-function coordinatesFromRawRouteSegment(record: Record<string, unknown>): Coordinate[] {
-  const geometry = record.geometry;
-  if (isLineStringGeometry(geometry)) {
-    return geometry.coordinates;
-  }
-
-  const stops = record.stops;
-  if (!Array.isArray(stops)) {
-    return [];
-  }
-
-  return stops
-    .map((stop) => {
-      if (!stop || typeof stop !== "object") {
-        return null;
-      }
-      const coordinates = (stop as Record<string, unknown>).coordinates;
-      return isCoordinate(coordinates) ? coordinates : null;
-    })
-    .filter((coordinate): coordinate is Coordinate => coordinate !== null);
-}
-
-function isLineStringGeometry(value: unknown): value is LineStringGeometry {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const candidate = value as Record<string, unknown>;
-  return candidate.type === "LineString" && Array.isArray(candidate.coordinates) && candidate.coordinates.every(isCoordinate);
-}
-
-function isCoordinate(value: unknown): value is Coordinate {
-  return (
-    Array.isArray(value) &&
-    value.length === 2 &&
-    typeof value[0] === "number" &&
-    typeof value[1] === "number" &&
-    Number.isFinite(value[0]) &&
-    Number.isFinite(value[1])
-  );
-}
-
 function routeColorExpression(): maplibregl.ExpressionSpecification {
   return [
     "case",
@@ -317,18 +176,18 @@ function routeColorExpression(): maplibregl.ExpressionSpecification {
   ] as maplibregl.ExpressionSpecification;
 }
 
-function addBusinessLayers(
-  map: maplibregl.Map,
-  routeData: FeatureCollection<LineString>,
-  stationData: FeatureCollection<Point>
-) {
+function addBusinessLayers(map: maplibregl.Map, mapData: TransportMapData) {
   map.addSource("trainmap-routes", {
     type: "geojson",
-    data: routeData
+    data: mapData.routes
   });
-  map.addSource("trainmap-stations", {
+  map.addSource("trainmap-stations-endpoints", {
     type: "geojson",
-    data: stationData
+    data: mapData.endpointStations
+  });
+  map.addSource("trainmap-stations-intermediate", {
+    type: "geojson",
+    data: mapData.intermediateStations
   });
 
   map.addLayer({
@@ -354,20 +213,19 @@ function addBusinessLayers(
   map.addLayer({
     id: "trainmap-stations-intermediate",
     type: "circle",
-    source: "trainmap-stations",
-    filter: ["==", ["get", "role"], "intermediate"],
+    source: "trainmap-stations-intermediate",
     paint: {
       "circle-color": "#f8f5ef",
       "circle-stroke-color": "#111827",
       "circle-stroke-width": 1.25,
+      "circle-opacity": 0.86,
       "circle-radius": 3.5
     }
   });
   map.addLayer({
     id: "trainmap-stations-endpoints",
     type: "circle",
-    source: "trainmap-stations",
-    filter: ["in", ["get", "role"], ["literal", ["origin", "destination"]]],
+    source: "trainmap-stations-endpoints",
     paint: {
       "circle-color": ["match", ["get", "role"], "origin", "#9f1239", "destination", "#0f766e", "#111827"],
       "circle-stroke-color": "#f8f5ef",
@@ -378,8 +236,7 @@ function addBusinessLayers(
   map.addLayer({
     id: "trainmap-labels",
     type: "symbol",
-    source: "trainmap-stations",
-    filter: ["in", ["get", "role"], ["literal", ["origin", "destination"]]],
+    source: "trainmap-stations-endpoints",
     layout: {
       "text-field": ["get", "name"],
       "text-size": 12,
@@ -392,6 +249,15 @@ function addBusinessLayers(
       "text-halo-width": 1.5
     }
   });
+}
+
+function setBusinessLayerData(map: maplibregl.Map, mapData: TransportMapData) {
+  const routeSource = map.getSource("trainmap-routes") as maplibregl.GeoJSONSource | undefined;
+  const endpointSource = map.getSource("trainmap-stations-endpoints") as maplibregl.GeoJSONSource | undefined;
+  const intermediateSource = map.getSource("trainmap-stations-intermediate") as maplibregl.GeoJSONSource | undefined;
+  routeSource?.setData(mapData.routes);
+  endpointSource?.setData(mapData.endpointStations);
+  intermediateSource?.setData(mapData.intermediateStations);
 }
 
 function fitToTrips(map: maplibregl.Map, routeData: FeatureCollection<LineString>) {

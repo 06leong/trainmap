@@ -7,6 +7,8 @@ import {
   buildSwissTrainFormationUrl,
   fetchSwissTrainFormation,
   inferSwissTrainFormationQueries,
+  normalizeSwissTrainFormationPayload,
+  parseSwissFormationShortString,
   summarizeSwissTrainFormationPayload
 } from "./swiss-formation";
 import {
@@ -191,13 +193,114 @@ describe("timetable adapters", () => {
     expect(
       summarizeSwissTrainFormationPayload({
         trainMetaInformation: { trainNumber: "61" },
-        scheduledStops: [{ stop: "Bern", formationShortString: "A[1][2]" }, { stop: "Olten" }],
-        formationElements: [{ vehicle: "1" }, { vehicle: "2" }]
+        formationsAtScheduledStops: [
+          {
+            scheduledStop: { stopPoint: { uic: 8507000, name: "Bern" }, track: "5" },
+            formationShort: { formationShortString: "@A,[1,2]" }
+          },
+          {
+            scheduledStop: { stopPoint: { uic: 8500218, name: "Olten" }, track: "7" },
+            formationShort: { formationShortString: "@B,[1,2]" }
+          }
+        ],
+        formations: [{ metaInformation: { numberVehicles: 2 }, formationVehicles: [{ position: 1 }, { position: 2 }] }]
       })
     ).toEqual({
-      formationStrings: ["A[1][2]"],
+      formationStrings: ["@A,[1,2]", "@B,[1,2]"],
+      rawFormationStrings: ["@A,[1,2]", "@B,[1,2]"],
+      parsedFormationStrings: [
+        parseSwissFormationShortString("@A,[1,2]"),
+        parseSwissFormationShortString("@B,[1,2]")
+      ],
+      meta: {
+        vehicleCount: 2
+      },
+      stops: [
+        {
+          sequence: 1,
+          name: "Bern",
+          uic: "8507000",
+          track: "5",
+          formationString: "@A,[1,2]",
+          parsedFormation: parseSwissFormationShortString("@A,[1,2]"),
+          vehicleGoals: []
+        },
+        {
+          sequence: 2,
+          name: "Olten",
+          uic: "8500218",
+          track: "7",
+          formationString: "@B,[1,2]",
+          parsedFormation: parseSwissFormationShortString("@B,[1,2]"),
+          vehicleGoals: []
+        }
+      ],
+      vehicles: [
+        { position: 1, sectorsByStop: [] },
+        { position: 2, sectorsByStop: [] }
+      ],
+      vehicleTypeLegend: expect.any(Object),
+      serviceLegend: expect.any(Object),
       stopCount: 2,
       vehicleCount: 2
+    });
+  });
+
+  it("parses Train Formation short strings into sectors, vehicles, services, and access markers", () => {
+    const parsed = parseSwissFormationShortString("@A,F,F@B,[(LK,2:18,2#BHP;KW;NF,W2:14,1:13,LK)]@C,X,>2,%WR,-K,=12#VR");
+
+    expect(parsed.sectors.map((sector) => sector.name)).toEqual(["A", "B", "C"]);
+    expect(parsed.vehicles[2]).toMatchObject({
+      typeCode: "LK",
+      typeLabel: "Traction unit",
+      inTrainGroup: true,
+      groupStart: true,
+      accessToPrevious: false
+    });
+    expect(parsed.vehicles[3]).toMatchObject({
+      typeCode: "2",
+      displayNumber: "18",
+      typeLabel: "2nd class coach"
+    });
+    expect(parsed.vehicles[4].services).toEqual([
+      { code: "BHP", label: "Wheelchair spaces", quantity: undefined },
+      { code: "KW", label: "Pram platform", quantity: undefined },
+      { code: "NF", label: "Low-floor access", quantity: undefined }
+    ]);
+    expect(parsed.vehicles[5]).toMatchObject({
+      typeCode: "W2",
+      displayNumber: "14",
+      typeLabel: "Restaurant and 2nd class coach"
+    });
+    expect(parsed.vehicles[7]).toMatchObject({ groupEnd: true, accessToNext: false });
+    expect(parsed.vehicles[9].statuses).toEqual([{ code: ">", label: "Vehicle with groups starting here" }]);
+    expect(parsed.vehicles[10].statuses).toEqual([{ code: "%", label: "Open but restaurant not served" }]);
+    expect(parsed.vehicles[11].statuses).toEqual([{ code: "-", label: "Closed" }]);
+    expect(parsed.vehicles[12].statuses).toEqual([{ code: "=", label: "Reserved for through groups" }]);
+  });
+
+  it("normalizes Train Formation full payload stop and vehicle perspectives", () => {
+    const normalized = normalizeSwissTrainFormationPayload(sampleSwissFormationFullPayload);
+
+    expect(normalized.rawFormationStrings).toEqual(["@A,[(LK,2:18,2#BHP;KW;NF,W2:14,1:13,LK)]"]);
+    expect(normalized.meta).toEqual({ lengthMeters: 201.5, vehicleCount: 5, seatCount: 320 });
+    expect(normalized.stops?.[0]).toMatchObject({
+      name: "Zürich HB",
+      uic: "8503000",
+      track: "8",
+      formationString: "@A,[(LK,2:18,2#BHP;KW;NF,W2:14,1:13,LK)]"
+    });
+    expect(normalized.vehicles?.[0]).toMatchObject({
+      position: 2,
+      displayNumber: "18",
+      evn: "93850000018-0",
+      typeCodeName: "Apm",
+      fromStopName: "Zürich HB",
+      toStopName: "Basel SBB",
+      firstClassSeats: 60,
+      lowFloor: true,
+      wheelchairAccessible: true,
+      sectorsByStop: [{ stopName: "Zürich HB", sectors: "B" }]
     });
   });
 
@@ -335,6 +438,63 @@ const sampleSwissOjpResponse = `<?xml version="1.0" encoding="UTF-8"?>
     </ojp:OJPTripDelivery>
   </siri:ServiceDelivery>
 </siri:OJPResponse>`;
+
+const sampleSwissFormationFullPayload = {
+  trainMetaInformation: { trainNumber: 9226 },
+  formationsAtScheduledStops: [
+    {
+      scheduledStop: {
+        stopPoint: { uic: 8503000, name: "Zürich HB" },
+        stopTime: { arrivalTime: "2026-04-28T10:00:00Z", departureTime: "2026-04-28T10:04:00Z" },
+        track: "8"
+      },
+      formationShort: {
+        formationShortString: "@A,[(LK,2:18,2#BHP;KW;NF,W2:14,1:13,LK)]",
+        vehicleGoals: [
+          {
+            fromVehicleAtPosition: 1,
+            toVehicleAtPosition: 5,
+            destinationStopPoint: { uic: 8500010, name: "Basel SBB" }
+          }
+        ]
+      }
+    }
+  ],
+  formations: [
+    {
+      metaInformation: { length: 201.5, numberSeats: 320, numberVehicles: 5 },
+      formationVehicles: [
+        {
+          position: 2,
+          number: 18,
+          vehicleIdentifier: { evn: "93850000018-0", parentEvn: "", typeCode: 6000, typeCodeName: "Apm" },
+          formationVehicleAtScheduledStops: [
+            {
+              stopPoint: { uic: 8503000, name: "Zürich HB" },
+              stopTime: { departureTime: "2026-04-28T10:04:00Z" },
+              track: "8",
+              sectors: "B",
+              accessToPreviousVehicle: true
+            }
+          ],
+          vehicleProperties: {
+            length: 26.4,
+            fromStop: { uic: 8503000, name: "Zürich HB" },
+            toStop: { uic: 8500010, name: "Basel SBB" },
+            number1class: 60,
+            number2class: 0,
+            numberBikeHooks: 0,
+            lowFloorTrolley: true,
+            closed: false,
+            trolleyStatus: "Normal",
+            accessibilityProperties: { numberWheelchairSpaces: 2 },
+            pictoProperties: { wheelchairPicto: true, bikePicto: false, strollerPicto: true, familyZonePicto: false, businessZonePicto: true }
+          }
+        }
+      ]
+    }
+  ]
+};
 
 const sampleSwissOjpTransferResponse = `<?xml version="1.0" encoding="UTF-8"?>
 <OJPResponse xmlns="http://www.vdv.de/ojp" xmlns:siri="http://www.siri.org.uk/siri">

@@ -3,6 +3,7 @@ import { DatabaseSetupNotice } from "@/components/database-setup-notice";
 import { PageHeader } from "@/components/page-header";
 import { RouteEditor } from "@/components/route-editor";
 import { StatusPill } from "@/components/status-pill";
+import { TrainFormationPanel } from "@/components/train-formation-panel";
 import { TripEditForm } from "@/components/trip-form";
 import { refineTripGeometryWithSwissOpenDataAction, repairTripGeometryAction } from "@/lib/actions/geometry";
 import { updateTripAction } from "@/lib/actions/trips";
@@ -79,65 +80,6 @@ export default async function TripDetailPage({ params }: { params: { tripId: str
           swissOpenDataConfigured={isSwissOpenDataConfigured()}
         />
       </div>
-    </div>
-  );
-}
-
-function TrainFormationPanel({ record }: { record: TrainFormationRecord }) {
-  return (
-    <section className="rounded-md border border-black/10 bg-white/72 p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-xs uppercase text-black/45">Train Formation Service</div>
-          <h2 className="mt-1 font-display text-2xl text-ink">Formation summary</h2>
-        </div>
-        <div className="rounded-full border border-black/10 bg-[#f8f5ef] px-3 py-1 text-xs text-black/58">
-          {record.configured ? "configured" : "not configured"}
-        </div>
-      </div>
-
-      {record.message ? <p className="mt-3 text-sm text-black/58">{record.message}</p> : null}
-
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        {record.summaries.map((summary) => (
-          <div key={`${summary.evu}-${summary.operationDate}-${summary.trainNumber}`} className="rounded-md border border-black/10 bg-[#f8f5ef] p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="font-medium text-ink">{summary.serviceLabel ?? `${summary.evu} ${summary.trainNumber}`}</div>
-              <div className="rounded-full border border-black/10 bg-white px-2 py-1 text-xs text-black/58">{summary.status}</div>
-            </div>
-            <div className="mt-3 grid gap-2 text-sm text-black/62 sm:grid-cols-3">
-              <SmallMetric label="EVU" value={summary.evu} />
-              <SmallMetric label="Train" value={summary.trainNumber} />
-              <SmallMetric label="Date" value={summary.operationDate} />
-              <SmallMetric label="Stops" value={summary.stopCount ? String(summary.stopCount) : "-"} />
-              <SmallMetric label="Vehicles" value={summary.vehicleCount ? String(summary.vehicleCount) : "-"} />
-              <SmallMetric label="Samples" value={String(summary.formationStrings.length)} />
-            </div>
-            {summary.formationStrings.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {summary.formationStrings.map((formation) => (
-                  <span key={formation} className="rounded border border-black/10 bg-white px-2 py-1 font-mono text-xs text-black/68">
-                    {formation}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-            {summary.message ? <p className="mt-3 text-xs text-black/50">{summary.message}</p> : null}
-            <div className="mt-3 rounded border border-black/10 bg-white px-2 py-1 font-mono text-[11px] text-black/55">
-              {summary.endpoint}
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function SmallMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-xs uppercase text-black/40">{label}</div>
-      <div className="mt-1 font-medium text-ink">{value}</div>
     </div>
   );
 }
