@@ -44,25 +44,7 @@ export function TransportMap({
   const routeData = useMemo<FeatureCollection<LineString>>(
     () => ({
       type: "FeatureCollection",
-      features: visibleTrips.flatMap((trip) => {
-        const geometry = getGeometryForTripDetail(trip);
-        if (geometry.coordinates.length < 2) {
-          return [];
-        }
-
-        return [
-          {
-            type: "Feature" as const,
-            properties: {
-              id: trip.id,
-              title: trip.title,
-              confidence: trip.geometry?.confidence ?? "inferred",
-              operator: trip.operatorName
-            },
-            geometry
-          }
-        ];
-      })
+      features: visibleTrips.flatMap(routeFeaturesForTrip)
     }),
     [visibleTrips]
   );
@@ -70,21 +52,23 @@ export function TransportMap({
   const stationData = useMemo<FeatureCollection<Point>>(
     () => ({
       type: "FeatureCollection",
-      features: visibleTrips.flatMap((trip) =>
-        trip.stops.map((stop) => ({
+      features: visibleTrips.flatMap((trip) => {
+        const stops = [...trip.stops].sort((a, b) => a.sequence - b.sequence);
+        return stops.map((stop, index) => ({
           type: "Feature" as const,
           properties: {
             id: stop.id,
             tripId: trip.id,
             name: stop.stationName,
-            sequence: stop.sequence
+            sequence: stop.sequence,
+            role: index === 0 ? "origin" : index === stops.length - 1 ? "destination" : "intermediate"
           },
           geometry: {
             type: "Point" as const,
             coordinates: stop.coordinates
           }
-        }))
-      )
+        }));
+      })
     }),
     [visibleTrips]
   );
@@ -185,11 +169,160 @@ export function TransportMap({
       ) : null}
       {showCaption ? (
         <div className="absolute bottom-3 left-3 rounded-md border border-black/10 bg-[#f8f5ef]/90 px-3 py-2 text-xs text-black/62 shadow-panel backdrop-blur">
-        Business route, station, label, and coverage layers are independent from the basemap.
+      Business route, station, label, and coverage layers are independent from the basemap.
         </div>
       ) : null}
     </div>
   );
+}
+
+function routeFeaturesForTrip(trip: Trip) {
+  const geometry = getGeometryForTripDetail(trip);
+  if (geometry.coordinates.length < 2) {
+    return [];
+  }
+
+  const services = routeServicesFromTrip(trip);
+  if (services.length < 2) {
+    return [routeFeature(trip, geometry.coordinates, 0, 1)];
+  }
+
+  const stops = [...trip.stops].sort((a, b) => a.sequence - b.sequence);
+  const segmentedFeatures = services
+    .map((service, index) => {
+      const startStop = service.departureAt ? findStopByTime(stops, service.departureAt, "departureAt") : undefined;
+      const endStop = service.arrivalAt ? findStopByTime(stops, service.arrivalAt, "arrivalAt") : undefined;
+      if (!startStop || !endStop || startStop.sequence >= endStop.sequence) {
+        return null;
+      }
+
+      const segmentCoordinates = sliceGeometryBetweenStops(geometry.coordinates, startStop.coordinates, endStop.coordinates);
+      return routeFeature(trip, segmentCoordinates, index, services.length);
+    })
+    .filter((feature): feature is ReturnType<typeof routeFeature> => feature !== null);
+
+  return segmentedFeatures.length >= 2 ? segmentedFeatures : [routeFeature(trip, geometry.coordinates, 0, 1)];
+}
+
+function routeFeature(trip: Trip, coordinates: Coordinate[], segmentIndex: number, segmentCount: number) {
+  return {
+    type: "Feature" as const,
+    properties: {
+      id: `${trip.id}-${segmentIndex}`,
+      title: trip.title,
+      confidence: trip.geometry?.confidence ?? "inferred",
+      operator: trip.operatorName,
+      segmentIndex,
+      segmentCount
+    },
+    geometry: {
+      type: "LineString" as const,
+      coordinates
+    }
+  };
+}
+
+function routeServicesFromTrip(trip: Trip): Array<{ trainCode: string; departureAt?: string; arrivalAt?: string }> {
+  const services = trip.rawImportRow?.services;
+  if (!Array.isArray(services)) {
+    return [];
+  }
+
+  const parsedServices: Array<{ trainCode: string; departureAt?: string; arrivalAt?: string }> = [];
+
+  for (const service of services) {
+    if (!service || typeof service !== "object") {
+      continue;
+    }
+    const record = service as Record<string, unknown>;
+    const trainCode = typeof record.trainCode === "string" ? record.trainCode : "";
+    if (!trainCode) {
+      continue;
+    }
+    parsedServices.push({
+      trainCode,
+      departureAt: typeof record.departureAt === "string" ? record.departureAt : undefined,
+      arrivalAt: typeof record.arrivalAt === "string" ? record.arrivalAt : undefined
+    });
+  }
+
+  return parsedServices;
+}
+
+function findStopByTime(
+  stops: Trip["stops"],
+  timestamp: string,
+  key: "arrivalAt" | "departureAt"
+): Trip["stops"][number] | undefined {
+  const target = new Date(timestamp).getTime();
+  if (!Number.isFinite(target)) {
+    return undefined;
+  }
+
+  return stops.find((stop) => {
+    const value = stop[key];
+    if (!value) {
+      return false;
+    }
+    return Math.abs(new Date(value).getTime() - target) <= 60_000;
+  });
+}
+
+function sliceGeometryBetweenStops(coordinates: Coordinate[], start: Coordinate, end: Coordinate): Coordinate[] {
+  const startIndex = nearestCoordinateIndex(coordinates, start);
+  const endIndex = nearestCoordinateIndex(coordinates, end);
+  if (startIndex < 0 || endIndex < 0 || endIndex <= startIndex) {
+    return [start, end];
+  }
+
+  const segment = coordinates.slice(startIndex, endIndex + 1);
+  return segment.length >= 2 ? segment : [start, end];
+}
+
+function nearestCoordinateIndex(coordinates: Coordinate[], target: Coordinate): number {
+  let nearestIndex = -1;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  coordinates.forEach((coordinate, index) => {
+    const distance = (coordinate[0] - target[0]) ** 2 + (coordinate[1] - target[1]) ** 2;
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+
+  return nearestIndex;
+}
+
+function routeColorExpression(): maplibregl.ExpressionSpecification {
+  return [
+    "case",
+    [">", ["get", "segmentCount"], 1],
+    [
+      "match",
+      ["get", "segmentIndex"],
+      0,
+      "#0f766e",
+      1,
+      "#7c3aed",
+      2,
+      "#ea580c",
+      3,
+      "#2563eb",
+      4,
+      "#be123c",
+      "#475569"
+    ],
+    [
+      "match",
+      ["get", "confidence"],
+      "exact",
+      "#0f766e",
+      "manual",
+      "#9f1239",
+      "#2563eb"
+    ]
+  ] as maplibregl.ExpressionSpecification;
 }
 
 function addBusinessLayers(
@@ -221,15 +354,7 @@ function addBusinessLayers(
     type: "line",
     source: "trainmap-routes",
     paint: {
-      "line-color": [
-        "match",
-        ["get", "confidence"],
-        "exact",
-        "#0f766e",
-        "manual",
-        "#9f1239",
-        "#2563eb"
-      ],
+      "line-color": routeColorExpression(),
       "line-width": 4,
       "line-opacity": 0.95
     }
@@ -239,16 +364,25 @@ function addBusinessLayers(
     type: "circle",
     source: "trainmap-stations",
     paint: {
-      "circle-color": "#f8f5ef",
+      "circle-color": [
+        "match",
+        ["get", "role"],
+        "origin",
+        "#9f1239",
+        "destination",
+        "#0f766e",
+        "#f8f5ef"
+      ],
       "circle-stroke-color": "#111827",
-      "circle-stroke-width": 2,
-      "circle-radius": 5
+      "circle-stroke-width": ["match", ["get", "role"], "intermediate", 1.25, 2.5],
+      "circle-radius": ["match", ["get", "role"], "intermediate", 3.5, 8]
     }
   });
   map.addLayer({
     id: "trainmap-labels",
     type: "symbol",
     source: "trainmap-stations",
+    filter: ["in", "role", "origin", "destination"],
     layout: {
       "text-field": ["get", "name"],
       "text-size": 12,

@@ -34,8 +34,9 @@ export function ScheduleAssistant({ trainFormationConfigured }: { trainFormation
   const [destination, setDestination] = useState<StationOption>(defaultDestination);
   const [originResults, setOriginResults] = useState<StationSearchResult[]>([]);
   const [destinationResults, setDestinationResults] = useState<StationSearchResult[]>([]);
-  const [departureDate, setDepartureDate] = useState("2026-05-01");
-  const [departureTime, setDepartureTime] = useState("09:00");
+  const [defaultDeparture] = useState(defaultEuropeanDeparture);
+  const [departureDate, setDepartureDate] = useState(defaultDeparture.date);
+  const [departureTime, setDepartureTime] = useState(defaultDeparture.time);
   const [options, setOptions] = useState<SwissOpenDataRouteOption[]>([]);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [previewTrip, setPreviewTrip] = useState<Trip>(() => buildPreviewTrip(undefined, defaultOrigin, defaultDestination));
@@ -361,7 +362,7 @@ function RouteDetails({
         <Metric label="Line / train code" value={option.trainCode} />
         <Metric label="Transfers" value={option.transferCount === 0 ? "Direct" : String(option.transferCount ?? 0)} />
         <Metric label="Geometry points" value={String(option.geometry?.coordinates.length ?? option.stops.length)} />
-        <Metric label="Formation" value={trainFormationConfigured ? "Queried on create" : "Token not configured"} />
+        <Metric label="Formation" value={trainFormationConfigured ? "Will query after save" : "Not configured"} />
       </div>
     </div>
   );
@@ -455,6 +456,13 @@ function buildPreviewTrip(
       createdBy: "swiss_open_data"
     },
     geometryVersions: [],
+    rawImportRow: option
+      ? {
+          provider: "swiss_open_data_ojp",
+          rawResultId: option.rawResultId,
+          services: option.services
+        }
+      : undefined,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -510,4 +518,24 @@ function duration(from: string, to: string): string {
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   return `${hours} h ${remainder} min`;
+}
+
+function defaultEuropeanDeparture(): { date: string; time: string } {
+  const now = new Date();
+  now.setMinutes(Math.ceil((now.getMinutes() + 5) / 15) * 15, 0, 0);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: ojpDisplayTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+
+  return {
+    date: `${value("year")}-${value("month")}-${value("day")}`,
+    time: `${value("hour")}:${value("minute")}`
+  };
 }

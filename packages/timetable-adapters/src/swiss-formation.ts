@@ -17,6 +17,7 @@ export interface SwissTrainFormationQuery {
 export interface SwissTrainFormationSummary extends SwissTrainFormationQuery {
   status: "available" | "unavailable" | "failed";
   endpoint: string;
+  httpStatus?: number;
   formationStrings: string[];
   stopCount?: number;
   vehicleCount?: number;
@@ -49,8 +50,9 @@ export async function fetchSwissTrainFormation(
         ...query,
         status: "failed",
         endpoint,
+        httpStatus: response.status,
         formationStrings: [],
-        message: `Formation request failed with HTTP ${response.status}.`
+        message: formationFailureMessage(response.status)
       };
     }
 
@@ -143,6 +145,19 @@ function evuFromOperatorName(operatorName: string): string | null {
     return "ZB";
   }
   return null;
+}
+
+function formationFailureMessage(status: number): string {
+  if (status === 403) {
+    return "Formation request failed with HTTP 403. Check that the Train Formation Service token is configured, approved for this app, and valid for this endpoint.";
+  }
+  if (status === 401) {
+    return "Formation request failed with HTTP 401. The Authorization bearer token was missing or rejected.";
+  }
+  if (status === 404) {
+    return "Formation request failed with HTTP 404. Check the Formation base URL and endpoint path.";
+  }
+  return `Formation request failed with HTTP ${status}.`;
 }
 
 function trainNumberFromCode(trainCode: string): string | null {

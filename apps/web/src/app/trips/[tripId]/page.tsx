@@ -123,6 +123,9 @@ function TrainFormationPanel({ record }: { record: TrainFormationRecord }) {
               </div>
             ) : null}
             {summary.message ? <p className="mt-3 text-xs text-black/50">{summary.message}</p> : null}
+            <div className="mt-3 rounded border border-black/10 bg-white px-2 py-1 font-mono text-[11px] text-black/55">
+              {summary.endpoint}
+            </div>
           </div>
         ))}
       </div>

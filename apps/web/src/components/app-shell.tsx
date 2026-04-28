@@ -32,7 +32,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav className="mt-6 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+            const active = isNavItemActive(pathname, item.href);
             return (
               <Link
                 key={item.href}
@@ -70,4 +70,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="lg:pl-64">{children}</main>
     </div>
   );
+}
+
+function isNavItemActive(pathname: string, href: string): boolean {
+  if (href === "/") {
+    return pathname === "/";
+  }
+  if (href === "/trips") {
+    return pathname === "/trips" || (pathname.startsWith("/trips/") && !pathname.startsWith("/trips/new"));
+  }
+  if (href === "/trips/new") {
+    return pathname === "/trips/new" || pathname.startsWith("/trips/new/");
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
 }

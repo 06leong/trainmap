@@ -124,6 +124,17 @@ Runtime behavior:
 - Supported inferred EVUs include `SBBP`, `BLSP`, `SOB`, `THURBO`, `RhB`, `TPF`, `TRN`, `MBC`, `OeBB`, and `ZB`.
 - Formation query failures do not block trip creation; the trip detail page shows available, unavailable, or failed summaries from the persisted trip metadata.
 
+Manual diagnostic request shape:
+
+```bash
+curl -L \
+  -H "Authorization: Bearer <TRAIN_FORMATION_TOKEN>" \
+  -H "User-Agent: trainmap/0.1" \
+  "https://api.opentransportdata.swiss/formation/formations_full?evu=SBBP&operationDate=2026-04-30&trainNumber=718"
+```
+
+The normal browser address bar cannot add the required bearer header. Use an API client such as Bruno/Postman/curl, or a browser extension that can attach request headers.
+
 ## GTFS Realtime configuration
 
 GTFS Realtime Trip Updates are protobuf feeds for real-time delays, cancellations, and modified trips. They are not suitable as the first source for Add Trip route planning because the feed references GTFS Static IDs that change between GTFS versions. The app should only attach GTFS-RT data after it can match against the correct GTFS Static feed version.
