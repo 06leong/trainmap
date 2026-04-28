@@ -12,6 +12,7 @@ import {
   searchSwissOpenDataStations
 } from "@/lib/providers/swiss-open-data";
 import { getTrainFormationForScheduleOption } from "@/lib/providers/swiss-formation";
+import { europeanLocalDateTimeToUtcIso } from "@/lib/time";
 
 export interface ScheduleStationSearchResult {
   stations: StationSearchResult[];
@@ -54,7 +55,7 @@ export async function searchScheduleConnectionsAction(
       options: await searchSwissOpenDataRoutes({
         origin: input.origin,
         destination: input.destination,
-        departureAt: localDateTime(input.departureDate, input.departureTime),
+        departureAt: europeanLocalDateTimeToUtcIso(input.departureDate, input.departureTime),
         numberOfResults: 8
       })
     };
@@ -96,6 +97,7 @@ export async function createTripFromScheduleAction(formData: FormData) {
       provider: "swiss_open_data_ojp",
       rawResultId: option.rawResultId,
       services: option.services,
+      routeSegments: option.routeSegments,
       trainFormation: formation
     }
   });
@@ -135,10 +137,6 @@ function geometryFromStops(stops: SwissOpenDataRouteOption["stops"]): LineString
     type: "LineString",
     coordinates: stops.map((stop) => stop.coordinates)
   };
-}
-
-function localDateTime(date: string, time: string): string {
-  return `${date}T${time || "09:00"}:00`;
 }
 
 function stringValue(formData: FormData, key: string, fallback: string): string {

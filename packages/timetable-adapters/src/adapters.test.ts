@@ -5,6 +5,7 @@ import { getTimetableAdapter, listTimetableProviders } from "./adapters";
 import { swissBusinessOrganisationNames } from "./swiss-business-organisations.generated";
 import {
   buildSwissTrainFormationUrl,
+  fetchSwissTrainFormation,
   inferSwissTrainFormationQueries,
   summarizeSwissTrainFormationPayload
 } from "./swiss-formation";
@@ -100,6 +101,13 @@ describe("timetable adapters", () => {
     expect(option.transferCount).toBe(0);
     expect(option.serviceSummary).toBe("Direct | EC 317");
     expect(option.stops.map((stop) => stop.stationName)).toEqual(["Zurich HB", "Lugano", "Milano Centrale"]);
+    expect(option.routeSegments).toHaveLength(1);
+    expect(option.routeSegments[0].trainCode).toBe("EC 317");
+    expect(option.routeSegments[0].geometry?.coordinates).toEqual([
+      [8.5402, 47.3782],
+      [8.95, 46.01],
+      [9.2042, 45.4864]
+    ]);
     expect(option.geometry?.coordinates).toEqual([
       [8.5402, 47.3782],
       [8.95, 46.01],
@@ -117,6 +125,17 @@ describe("timetable adapters", () => {
     expect(option.stops.map((stop) => stop.stationName)).toEqual(["Bern", "Olten", "Lugano", "Milano Centrale"]);
     expect(option.stops[1].arrivalAt).toBe("2026-04-29T09:24:00Z");
     expect(option.stops[1].departureAt).toBe("2026-04-29T09:30:00Z");
+    expect(option.routeSegments).toHaveLength(2);
+    expect(option.routeSegments.map((segment) => segment.trainCode)).toEqual(["IC 61", "EC 317"]);
+    expect(option.routeSegments[0].geometry?.coordinates).toEqual([
+      [7.4391, 46.9488],
+      [7.9079, 47.3519]
+    ]);
+    expect(option.routeSegments[1].geometry?.coordinates).toEqual([
+      [7.9078, 47.3518],
+      [8.9462, 46.0049],
+      [9.2042, 45.4864]
+    ]);
   });
 
   it("bundles Swiss Business Organisation names for OJP OperatorRef mapping", () => {
@@ -134,9 +153,24 @@ describe("timetable adapters", () => {
     });
 
     expect(url).toBe(
-      "https://api.opentransportdata.swiss/formation/formations_full?evu=SBBP&operationDate=2026-04-27&trainNumber=61"
+      "https://api.opentransportdata.swiss/formation/v2/formations_full?evu=SBBP&operationDate=2026-04-27&trainNumber=61"
     );
-    expect(url).not.toMatch(/\/formation\/v\d+\//);
+  });
+
+  it("allows a full Train Formation endpoint override", () => {
+    const url = buildSwissTrainFormationUrl(
+      "https://ignored.example.test/formation",
+      {
+        evu: "SBBP",
+        operationDate: "2026-04-27",
+        trainNumber: "61"
+      },
+      { fullEndpoint: "https://api.opentransportdata.swiss/formation/v2/formations_full" }
+    );
+
+    expect(url).toBe(
+      "https://api.opentransportdata.swiss/formation/v2/formations_full?evu=SBBP&operationDate=2026-04-27&trainNumber=61"
+    );
   });
 
   it("infers supported Train Formation queries from OJP service metadata", () => {
@@ -165,6 +199,26 @@ describe("timetable adapters", () => {
       stopCount: 2,
       vehicleCount: 2
     });
+  });
+
+  it("includes Train Formation error response snippets", async () => {
+    const summary = await fetchSwissTrainFormation(
+      {
+        evu: "SBBP",
+        operationDate: "2026-04-28",
+        trainNumber: "577"
+      },
+      {
+        apiKey: "token",
+        fetchImpl: async () => new Response('{"error":"Requested endpoint is forbidden"}', { status: 403 })
+      }
+    );
+
+    expect(summary.status).toBe("failed");
+    expect(summary.endpoint).toBe(
+      "https://api.opentransportdata.swiss/formation/v2/formations_full?evu=SBBP&operationDate=2026-04-28&trainNumber=577"
+    );
+    expect(summary.message).toContain("Response: {\"error\":\"Requested endpoint is forbidden\"}");
   });
 
   it("posts Swiss OJP requests with required headers", async () => {
@@ -341,6 +395,10 @@ const sampleSwissOjpTransferResponse = `<?xml version="1.0" encoding="UTF-8"?>
                 <JourneyRef>ch:1:sjyid:ic-61</JourneyRef>
                 <siri:OperatorRef>11</siri:OperatorRef>
               </Service>
+              <LegProjection>
+                <Point><siri:Longitude>7.4391</siri:Longitude><siri:Latitude>46.9488</siri:Latitude></Point>
+                <Point><siri:Longitude>7.9079</siri:Longitude><siri:Latitude>47.3519</siri:Latitude></Point>
+              </LegProjection>
             </TimedLeg>
           </Leg>
           <Leg>
@@ -370,6 +428,11 @@ const sampleSwissOjpTransferResponse = `<?xml version="1.0" encoding="UTF-8"?>
                 <JourneyRef>ch:1:sjyid:ec-317</JourneyRef>
                 <siri:OperatorRef>955</siri:OperatorRef>
               </Service>
+              <LegProjection>
+                <Point><siri:Longitude>7.9078</siri:Longitude><siri:Latitude>47.3518</siri:Latitude></Point>
+                <Point><siri:Longitude>8.9462</siri:Longitude><siri:Latitude>46.0049</siri:Latitude></Point>
+                <Point><siri:Longitude>9.2042</siri:Longitude><siri:Latitude>45.4864</siri:Latitude></Point>
+              </LegProjection>
             </TimedLeg>
           </Leg>
         </Trip>

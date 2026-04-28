@@ -15,6 +15,18 @@ export interface SwissOpenDataRouteOption extends TimetableTripOption {
   stops: TripStop[];
   rawResultId: string;
   services: SwissOpenDataServiceSummary[];
+  routeSegments: SwissOpenDataRouteSegment[];
+}
+
+export interface SwissOpenDataRouteSegment {
+  id: string;
+  sequence: number;
+  trainCode: string;
+  operatorName?: string;
+  departureAt?: string;
+  arrivalAt?: string;
+  stops: TripStop[];
+  geometry?: LineStringGeometry;
 }
 
 export interface SwissOpenDataServiceSummary {
@@ -252,8 +264,11 @@ function routeOptionFromTripResult(
   const rawResultId = textContent(tripResult, "ResultId") ?? textContent(tripResult, "TripId") ?? `ojp-result-${index + 1}`;
   const timedLegs = blocks(tripResult, "TimedLeg");
   const services = timedLegs.map(parseTimedLegService).filter((service): service is SwissOpenDataServiceSummary => service !== null);
+  const routeSegments = timedLegs
+    .map((timedLeg, segmentIndex) => parseTimedLegRouteSegment(timedLeg, locationsByRef, rawResultId, segmentIndex))
+    .filter((segment): segment is SwissOpenDataRouteSegment => segment !== null);
   const stops = mergeTransferStops(timedLegs.flatMap((timedLeg) => parseTimedLegStops(timedLeg, locationsByRef)));
-  const geometry = geometryFromTripResult(tripResult, stops);
+  const geometry = geometryFromRouteSegments(routeSegments) ?? geometryFromTripResult(tripResult, stops);
   const transferCount = transferCountFromTripResult(tripResult, timedLegs.length);
   const trainCode = trainCodeFromServices(services) ?? trainCodeFromTripResult(tripResult);
   const operatorName = operatorNameFromServices(services) ?? textContent(tripResult, "OperatorName") ?? "Unknown operator";
@@ -280,6 +295,33 @@ function routeOptionFromTripResult(
     legCount: timedLegs.length,
     serviceSummary: serviceSummary(services, transferCount),
     services,
+    routeSegments,
+    stops,
+    geometry
+  };
+}
+
+function parseTimedLegRouteSegment(
+  timedLeg: string,
+  locationsByRef: Map<string, ParsedLocation>,
+  rawResultId: string,
+  index: number
+): SwissOpenDataRouteSegment | null {
+  const stops = parseTimedLegStops(timedLeg, locationsByRef);
+  const service = parseTimedLegService(timedLeg);
+  const geometry = geometryFromTimedLeg(timedLeg, stops);
+
+  if (stops.length < 2 && !geometry) {
+    return null;
+  }
+
+  return {
+    id: `${stableIdPart(rawResultId)}-segment-${index + 1}`,
+    sequence: index + 1,
+    trainCode: service?.trainCode ?? "Unknown service",
+    operatorName: service?.operatorName,
+    departureAt: service?.departureAt ?? stops[0]?.departureAt,
+    arrivalAt: service?.arrivalAt ?? stops[stops.length - 1]?.arrivalAt,
     stops,
     geometry
   };
@@ -354,7 +396,7 @@ function parseTimedLegService(timedLeg: string): SwissOpenDataServiceSummary | n
 }
 
 function mergeTransferStops(stops: TripStop[]): TripStop[] {
-  const sortedStops = [...stops].sort((a, b) => a.sequence - b.sequence);
+  const sortedStops = stops;
   const merged: TripStop[] = [];
 
   for (const stop of sortedStops) {
@@ -443,6 +485,33 @@ function geometryFromTripResult(tripResult: string, stops: TripStop[]): LineStri
 
   if (stops.length >= 2) {
     return { type: "LineString", coordinates: stops.map((stop) => stop.coordinates) };
+  }
+
+  return undefined;
+}
+
+function geometryFromTimedLeg(timedLeg: string, stops: TripStop[]): LineStringGeometry | undefined {
+  const projectedBlocks = [...blocks(timedLeg, "LegProjection"), ...blocks(timedLeg, "TrackSection")];
+  const coordinates = projectedBlocks.flatMap((block) => coordinatesFromRepeatedPositions(block));
+  const uniqueCoordinates = dedupeCoordinates(coordinates);
+
+  if (uniqueCoordinates.length >= 2) {
+    return { type: "LineString", coordinates: uniqueCoordinates };
+  }
+
+  if (stops.length >= 2) {
+    return { type: "LineString", coordinates: stops.map((stop) => stop.coordinates) };
+  }
+
+  return undefined;
+}
+
+function geometryFromRouteSegments(segments: SwissOpenDataRouteSegment[]): LineStringGeometry | undefined {
+  const coordinates = segments.flatMap((segment) => segment.geometry?.coordinates ?? []);
+  const uniqueCoordinates = dedupeCoordinates(coordinates);
+
+  if (uniqueCoordinates.length >= 2) {
+    return { type: "LineString", coordinates: uniqueCoordinates };
   }
 
   return undefined;

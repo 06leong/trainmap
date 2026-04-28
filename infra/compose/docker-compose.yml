@@ -29,10 +29,12 @@ services:
       SWISS_OPEN_DATA_REQUESTOR_REF: trainmap_prod
       SWISS_OPEN_DATA_USER_AGENT: trainmap/0.1
 
-      # Optional, not used by Add Trip yet: train composition details such as vehicles, sectors, and accessibility.
+      # Optional: train composition details such as vehicles, sectors, and accessibility.
       # Requires a separate Train Formation Service TOKEN from opentransportdata.swiss.
       # SWISS_TRAIN_FORMATION_API_KEY: replace-with-formation-token
       SWISS_TRAIN_FORMATION_API_BASE_URL: https://api.opentransportdata.swiss/formation
+      SWISS_TRAIN_FORMATION_FULL_PATH: /v2/formations_full
+      # SWISS_TRAIN_FORMATION_FULL_ENDPOINT: https://api.opentransportdata.swiss/formation/v2/formations_full
       SWISS_TRAIN_FORMATION_USER_AGENT: trainmap/0.1
 
       # Optional, not used by Add Trip yet: GTFS-RT Trip Updates. Use with matching GTFS Static data.

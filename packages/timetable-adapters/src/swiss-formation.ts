@@ -3,6 +3,8 @@ import type { SwissOpenDataRouteOption, SwissOpenDataServiceSummary } from "./sw
 export interface SwissTrainFormationConfig {
   apiKey: string;
   baseUrl?: string;
+  fullPath?: string;
+  fullEndpoint?: string;
   userAgent?: string;
   fetchImpl?: typeof fetch;
 }
@@ -25,13 +27,17 @@ export interface SwissTrainFormationSummary extends SwissTrainFormationQuery {
 }
 
 const defaultFormationBaseUrl = "https://api.opentransportdata.swiss/formation";
+const defaultFormationFullPath = "/v2/formations_full";
 const defaultUserAgent = "trainmap/0.1";
 
 export async function fetchSwissTrainFormation(
   query: SwissTrainFormationQuery,
   config: SwissTrainFormationConfig
 ): Promise<SwissTrainFormationSummary> {
-  const endpoint = buildSwissTrainFormationUrl(config.baseUrl ?? defaultFormationBaseUrl, query);
+  const endpoint = buildSwissTrainFormationUrl(config.baseUrl ?? defaultFormationBaseUrl, query, {
+    fullPath: config.fullPath,
+    fullEndpoint: config.fullEndpoint
+  });
   const fetchImpl = config.fetchImpl ?? fetch;
 
   try {
@@ -45,18 +51,21 @@ export async function fetchSwissTrainFormation(
       signal: AbortSignal.timeout(15_000)
     });
 
+    const responseText = await response.text();
+
     if (!response.ok) {
+      const snippet = sanitizeResponseSnippet(responseText);
       return {
         ...query,
         status: "failed",
         endpoint,
         httpStatus: response.status,
         formationStrings: [],
-        message: formationFailureMessage(response.status)
+        message: [formationFailureMessage(response.status), snippet ? `Response: ${snippet}` : ""].filter(Boolean).join(" ")
       };
     }
 
-    const payload = (await response.json()) as unknown;
+    const payload = JSON.parse(responseText) as unknown;
     const summary = summarizeSwissTrainFormationPayload(payload);
     return {
       ...query,
@@ -75,8 +84,13 @@ export async function fetchSwissTrainFormation(
   }
 }
 
-export function buildSwissTrainFormationUrl(baseUrl: string, query: SwissTrainFormationQuery): string {
-  const url = new URL(`${baseUrl.replace(/\/+$/g, "")}/formations_full`);
+export function buildSwissTrainFormationUrl(
+  baseUrl: string,
+  query: SwissTrainFormationQuery,
+  options: { fullPath?: string; fullEndpoint?: string } = {}
+): string {
+  const endpoint = options.fullEndpoint?.trim() || `${baseUrl.replace(/\/+$/g, "")}${normalizePath(options.fullPath ?? defaultFormationFullPath)}`;
+  const url = new URL(endpoint);
   url.searchParams.set("evu", query.evu);
   url.searchParams.set("operationDate", query.operationDate);
   url.searchParams.set("trainNumber", query.trainNumber);
@@ -149,7 +163,7 @@ function evuFromOperatorName(operatorName: string): string | null {
 
 function formationFailureMessage(status: number): string {
   if (status === 403) {
-    return "Formation request failed with HTTP 403. Check that the Train Formation Service token is configured, approved for this app, and valid for this endpoint.";
+    return "Formation request failed with HTTP 403. Check that the Train Formation Service token is configured, approved for this app, valid for the v2 endpoint, and allowed for this EVU/date.";
   }
   if (status === 401) {
     return "Formation request failed with HTTP 401. The Authorization bearer token was missing or rejected.";
@@ -158,6 +172,10 @@ function formationFailureMessage(status: number): string {
     return "Formation request failed with HTTP 404. Check the Formation base URL and endpoint path.";
   }
   return `Formation request failed with HTTP ${status}.`;
+}
+
+function normalizePath(value: string): string {
+  return value.startsWith("/") ? value : `/${value}`;
 }
 
 function trainNumberFromCode(trainCode: string): string | null {
@@ -208,4 +226,12 @@ function visitJson(value: unknown, visitor: (key: string, value: unknown) => voi
 
 function uniqueValues(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function sanitizeResponseSnippet(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .trim()
+    .slice(0, 600);
 }

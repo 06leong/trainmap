@@ -62,8 +62,10 @@ Required runtime environment variables:
 - `SWISS_OPEN_DATA_OJP_ENDPOINT`: optional OJP endpoint override, default `https://api.opentransportdata.swiss/ojp20`.
 - `SWISS_OPEN_DATA_REQUESTOR_REF`: optional OJP requestor reference, default `trainmap_prod` in the app. Use a suffix such as `_test`, `_int`, or `_prod`.
 - `SWISS_OPEN_DATA_USER_AGENT`: optional User-Agent for Swiss Open Data API calls, default `trainmap/0.1`.
-- `SWISS_TRAIN_FORMATION_API_KEY`: optional Train Formation Service token for future train composition enrichment.
+- `SWISS_TRAIN_FORMATION_API_KEY`: optional Train Formation Service token for train composition enrichment after schedule-created trips.
 - `SWISS_TRAIN_FORMATION_API_BASE_URL`: optional Train Formation Service product base URL, default `https://api.opentransportdata.swiss/formation`.
+- `SWISS_TRAIN_FORMATION_FULL_PATH`: optional Formation full endpoint path, default `/v2/formations_full`.
+- `SWISS_TRAIN_FORMATION_FULL_ENDPOINT`: optional full endpoint override, for example `https://api.opentransportdata.swiss/formation/v2/formations_full`.
 - `SWISS_TRAIN_FORMATION_USER_AGENT`: optional User-Agent for Train Formation Service calls, default `trainmap/0.1`.
 - `SWISS_GTFS_RT_API_KEY`: optional GTFS Realtime token for future Trip Updates ingestion.
 - `SWISS_GTFS_RT_API_URL`: optional GTFS Realtime Trip Updates URL, default `https://api.opentransportdata.swiss/la/gtfs-rt`.
@@ -80,6 +82,14 @@ npm run swiss-open-data:smoke
 ```
 
 The smoke command searches `Zürich HB`, searches `Milano Centrale`, then runs a TripRequest between the selected station refs. It prints result counts and never prints the token.
+
+To test the Train Formation Service manually, use a client that can send the bearer token. Opening the URL in a browser address bar will not include the required `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer $SWISS_TRAIN_FORMATION_API_KEY" \
+  -H "Accept: application/json" \
+  "https://api.opentransportdata.swiss/formation/v2/formations_full?evu=SBBP&operationDate=2026-04-28&trainNumber=577"
+```
 
 Validation:
 
@@ -139,7 +149,7 @@ Edit `/home/docker/trainmap/docker-compose.yml` before starting:
 - `postgres.environment.POSTGRES_PASSWORD`: use the same strong password as `DATABASE_URL`.
 - `app.environment.NEXT_PUBLIC_APP_URL`: set your public domain, for example `https://trainmap.example.com`.
 - `app.environment.SWISS_OPEN_DATA_API_KEY`: optional. Set this to the API Manager `TOKEN`, not `TOKEN HASH`, to enable Swiss OJP station search, schedule-assisted trip creation, and route refinement.
-- `app.environment.SWISS_TRAIN_FORMATION_API_KEY`: optional. Set this only after subscribing to Train Formation Service; it is reserved for train composition details and is not required for Add Trip.
+- `app.environment.SWISS_TRAIN_FORMATION_API_KEY`: optional. Set this only after subscribing to Train Formation Service; Add Trip will query it after saving a schedule-created trip when the selected train has a supported EVU.
 - `app.environment.SWISS_GTFS_RT_API_KEY`: optional. Set this only after subscribing to GTFS Realtime; it is reserved for future real-time Trip Updates and must be paired with matching GTFS Static data.
 - `app.environment.*_USER_AGENT`: optional but recommended for every Swiss Open Data API product. Keep the default or set a value that identifies your deployment.
 - `app.ports`: the default is `172.18.0.1:4396:3000` for Nginx Proxy Manager upstream `http://172.18.0.1:4396`. Change the gateway IP or host port if your VPS uses different values.
@@ -193,7 +203,7 @@ docker compose exec -T postgres \
 - Stop sequence is the canonical route backbone.
 - `@trainmap/geo` provides `getRoute(...)`, `loadConnectionsOrSetManualVias(...)`, route confidence, fitBounds helpers, and geometry version creation.
 - Swiss Open Data OJP 2.0 can create and refine trips with provider stop sequences and leg projection / track section coordinates when `SWISS_OPEN_DATA_API_KEY` is configured.
-- Swiss Open Data Train Formation Service can enrich schedule-created trips with best-effort formation summaries for supported EVUs. GTFS Realtime tokens are configurable but reserved for future real-time updates tied to a matching GTFS Static feed.
+- Swiss Open Data Train Formation Service can enrich schedule-created trips with best-effort formation summaries for supported EVUs via `/formation/v2/formations_full`. GTFS Realtime tokens are configurable but reserved for future real-time updates tied to a matching GTFS Static feed.
 - The Add Trip page uses OJP 2.0 server-side for station search, connection search, stop sequence import, map preview, and provider geometry creation.
 - CSV import preserves raw rows and separates matched, fuzzy matched, unmatched, and invalid rows.
 - Timetable adapters expose stable provider contracts for `swiss_open_data`, `db_api`, `ns_api`, and `generic_gtfs`.

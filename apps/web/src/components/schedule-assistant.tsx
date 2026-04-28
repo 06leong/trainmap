@@ -458,10 +458,11 @@ function buildPreviewTrip(
     geometryVersions: [],
     rawImportRow: option
       ? {
-          provider: "swiss_open_data_ojp",
-          rawResultId: option.rawResultId,
-          services: option.services
-        }
+        provider: "swiss_open_data_ojp",
+        rawResultId: option.rawResultId,
+        services: option.services,
+        routeSegments: option.routeSegments
+      }
       : undefined,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
