@@ -96,6 +96,8 @@ Optional environment:
 - `SWISS_OPEN_DATA_REQUESTOR_REF`
 - `SWISS_OPEN_DATA_USER_AGENT`
 
+`SWISS_OPEN_DATA_REQUESTOR_REF` is specific to OJP/SIRI XML payloads. It is not a generic HTTP header and is not used by Train Formation Service or GTFS Realtime.
+
 ## Train Formation Service configuration
 
 Train Formation Service is a REST/JSON service for train composition data, not a route planner. The API Manager product URL should be configured as the base URL without a version suffix:
@@ -114,6 +116,7 @@ Configured environment:
 
 - `SWISS_TRAIN_FORMATION_API_KEY`
 - `SWISS_TRAIN_FORMATION_API_BASE_URL`, default `https://api.opentransportdata.swiss/formation`
+- `SWISS_TRAIN_FORMATION_USER_AGENT`, default `trainmap/0.1`
 
 This token is separate from the OJP token. Use the API Manager `TOKEN` value only; the token hash is not used. The public limits page currently groups Train Formation Service with OJP/OJPFare/CKAN at 50 requests per minute and 20,000 requests per day per API key.
 
@@ -143,6 +146,7 @@ Configured environment:
 
 - `SWISS_GTFS_RT_API_KEY`
 - `SWISS_GTFS_RT_API_URL`, default `https://api.opentransportdata.swiss/la/gtfs-rt`
+- `SWISS_GTFS_RT_USER_AGENT`, default `trainmap/0.1`
 
 Implementation notes for the future adapter:
 

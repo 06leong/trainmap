@@ -64,10 +64,13 @@ Required runtime environment variables:
 - `SWISS_OPEN_DATA_USER_AGENT`: optional User-Agent for Swiss Open Data API calls, default `trainmap/0.1`.
 - `SWISS_TRAIN_FORMATION_API_KEY`: optional Train Formation Service token for future train composition enrichment.
 - `SWISS_TRAIN_FORMATION_API_BASE_URL`: optional Train Formation Service product base URL, default `https://api.opentransportdata.swiss/formation`.
+- `SWISS_TRAIN_FORMATION_USER_AGENT`: optional User-Agent for Train Formation Service calls, default `trainmap/0.1`.
 - `SWISS_GTFS_RT_API_KEY`: optional GTFS Realtime token for future Trip Updates ingestion.
 - `SWISS_GTFS_RT_API_URL`: optional GTFS Realtime Trip Updates URL, default `https://api.opentransportdata.swiss/la/gtfs-rt`.
+- `SWISS_GTFS_RT_USER_AGENT`: optional User-Agent for future GTFS Realtime calls, default `trainmap/0.1`.
 
 Only API Manager `TOKEN` values are used. The `TOKEN HASH` shown in the API Manager is not needed by trainmap and should not be configured in compose.
+`SWISS_OPEN_DATA_REQUESTOR_REF` is only for OJP/SIRI XML requests. Formation and GTFS-RT use HTTP headers and do not need requestor refs.
 
 After setting `SWISS_OPEN_DATA_API_KEY`, you can smoke-test OJP 2.0 outside the UI:
 
@@ -138,6 +141,7 @@ Edit `/home/docker/trainmap/docker-compose.yml` before starting:
 - `app.environment.SWISS_OPEN_DATA_API_KEY`: optional. Set this to the API Manager `TOKEN`, not `TOKEN HASH`, to enable Swiss OJP station search, schedule-assisted trip creation, and route refinement.
 - `app.environment.SWISS_TRAIN_FORMATION_API_KEY`: optional. Set this only after subscribing to Train Formation Service; it is reserved for train composition details and is not required for Add Trip.
 - `app.environment.SWISS_GTFS_RT_API_KEY`: optional. Set this only after subscribing to GTFS Realtime; it is reserved for future real-time Trip Updates and must be paired with matching GTFS Static data.
+- `app.environment.*_USER_AGENT`: optional but recommended for every Swiss Open Data API product. Keep the default or set a value that identifies your deployment.
 - `app.ports`: the default is `172.18.0.1:4396:3000` for Nginx Proxy Manager upstream `http://172.18.0.1:4396`. Change the gateway IP or host port if your VPS uses different values.
 
 The compose file stores PostgreSQL data under `./data` and PNG exports in a Docker-managed named volume:

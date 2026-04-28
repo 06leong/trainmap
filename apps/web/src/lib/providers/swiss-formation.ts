@@ -46,7 +46,7 @@ export async function getTrainFormationForScheduleOption(option: SwissOpenDataRo
       fetchSwissTrainFormation(query, {
         apiKey,
         baseUrl: process.env.SWISS_TRAIN_FORMATION_API_BASE_URL,
-        userAgent: process.env.SWISS_OPEN_DATA_USER_AGENT ?? "trainmap/0.1"
+        userAgent: process.env.SWISS_TRAIN_FORMATION_USER_AGENT ?? process.env.SWISS_OPEN_DATA_USER_AGENT ?? "trainmap/0.1"
       })
     )
   );
