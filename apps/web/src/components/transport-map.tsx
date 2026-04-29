@@ -7,6 +7,8 @@ import { fitBoundsFromCoordinates } from "@trainmap/geo";
 import { cn } from "@trainmap/ui";
 import { buildTransportMapData, emptyTransportMapData, type TransportMapData } from "@/lib/transport-map-data";
 
+export type TransportMapMode = "overview" | "detail" | "preview" | "export";
+
 const baseStyles = {
   light: process.env.NEXT_PUBLIC_MAP_STYLE_LIGHT ?? "https://tiles.openfreemap.org/styles/bright",
   dark: process.env.NEXT_PUBLIC_MAP_STYLE_DARK ?? "https://tiles.openfreemap.org/styles/liberty",
@@ -20,7 +22,8 @@ export function TransportMap({
   showControls = true,
   showCaption = true,
   initialBaseStyle = "light",
-  frame = "app"
+  frame = "app",
+  mapMode
 }: {
   trips: Trip[];
   selectedTripId?: string;
@@ -29,6 +32,7 @@ export function TransportMap({
   showCaption?: boolean;
   initialBaseStyle?: keyof typeof baseStyles;
   frame?: "app" | "export";
+  mapMode?: TransportMapMode;
 }) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -36,6 +40,7 @@ export function TransportMap({
   const [baseStyle, setBaseStyle] = useState<keyof typeof baseStyles>(initialBaseStyle);
   const [loaded, setLoaded] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  const resolvedMapMode: TransportMapMode = mapMode ?? (frame === "export" ? "export" : "overview");
   const visibleTrips = useMemo(
     () => (selectedTripId ? trips.filter((trip) => trip.id === selectedTripId) : trips),
     [selectedTripId, trips]
@@ -76,7 +81,7 @@ export function TransportMap({
 
     map.on("load", () => {
       setLoaded(true);
-      addBusinessLayers(map, emptyTransportMapData);
+      addBusinessLayers(map, emptyTransportMapData, resolvedMapMode);
       map.triggerRepaint();
     });
 
@@ -87,7 +92,7 @@ export function TransportMap({
       map.remove();
       mapRef.current = null;
     };
-  }, [baseStyle, frame, showControls]);
+  }, [baseStyle, frame, resolvedMapMode, showControls]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -97,15 +102,15 @@ export function TransportMap({
 
     setMapReady(false);
     wrapperRef.current?.setAttribute("data-map-ready", "false");
-    setBusinessLayerData(map, mapData);
-    fitToTrips(map, mapData);
-    window.requestAnimationFrame(() => {
+    updateMapDataAndFit(map, mapData, resolvedMapMode);
+    const readyFrame = window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         setMapReady(true);
         wrapperRef.current?.setAttribute("data-map-ready", "true");
       });
     });
-  }, [loaded, mapData]);
+    return () => window.cancelAnimationFrame(readyFrame);
+  }, [loaded, mapData, resolvedMapMode]);
 
   return (
     <div
@@ -144,7 +149,10 @@ export function TransportMap({
   );
 }
 
-function routeColorExpression(): maplibregl.ExpressionSpecification {
+function routeColorExpression(mapMode: TransportMapMode): maplibregl.ExpressionSpecification | string {
+  if (mapMode === "detail" || mapMode === "preview") {
+    return "#111827";
+  }
   return [
     "case",
     [">", ["get", "segmentCount"], 1],
@@ -175,7 +183,7 @@ function routeColorExpression(): maplibregl.ExpressionSpecification {
   ] as maplibregl.ExpressionSpecification;
 }
 
-function addBusinessLayers(map: maplibregl.Map, mapData: TransportMapData) {
+function addBusinessLayers(map: maplibregl.Map, mapData: TransportMapData, mapMode: TransportMapMode) {
   map.addSource("trainmap-routes", {
     type: "geojson",
     data: mapData.routes
@@ -188,6 +196,10 @@ function addBusinessLayers(map: maplibregl.Map, mapData: TransportMapData) {
     type: "geojson",
     data: mapData.intermediateStations
   });
+  map.addSource("trainmap-station-labels", {
+    type: "geojson",
+    data: labelsForMode(mapData, mapMode)
+  });
 
   map.addLayer({
     id: "trainmap-route-halo",
@@ -195,8 +207,18 @@ function addBusinessLayers(map: maplibregl.Map, mapData: TransportMapData) {
     source: "trainmap-routes",
     paint: {
       "line-color": "#f8f5ef",
-      "line-width": 8,
-      "line-opacity": 0.72
+      "line-width": mapMode === "detail" || mapMode === "preview" ? 12 : 9,
+      "line-opacity": 0.88
+    }
+  });
+  map.addLayer({
+    id: "trainmap-route-casing",
+    type: "line",
+    source: "trainmap-routes",
+    paint: {
+      "line-color": "#111827",
+      "line-width": mapMode === "detail" || mapMode === "preview" ? 7 : 5.5,
+      "line-opacity": 0.94
     }
   });
   map.addLayer({
@@ -204,9 +226,9 @@ function addBusinessLayers(map: maplibregl.Map, mapData: TransportMapData) {
     type: "line",
     source: "trainmap-routes",
     paint: {
-      "line-color": routeColorExpression(),
-      "line-width": 4,
-      "line-opacity": 0.95
+      "line-color": routeColorExpression(mapMode),
+      "line-width": mapMode === "detail" || mapMode === "preview" ? 5 : 3.5,
+      "line-opacity": 0.98
     }
   });
   map.addLayer({
@@ -217,8 +239,8 @@ function addBusinessLayers(map: maplibregl.Map, mapData: TransportMapData) {
       "circle-color": "#f8f5ef",
       "circle-stroke-color": "#111827",
       "circle-stroke-width": 1.25,
-      "circle-opacity": 0.86,
-      "circle-radius": 3.5
+      "circle-opacity": mapMode === "overview" || mapMode === "export" ? 0.72 : 0.92,
+      "circle-radius": mapMode === "overview" || mapMode === "export" ? 3.2 : 4.6
     }
   });
   map.addLayer({
@@ -227,7 +249,7 @@ function addBusinessLayers(map: maplibregl.Map, mapData: TransportMapData) {
     source: "trainmap-stations-endpoints",
     paint: {
       "circle-color": "#f8f5ef",
-      "circle-radius": 12,
+      "circle-radius": mapMode === "overview" || mapMode === "export" ? 11 : 14,
       "circle-opacity": 0.92
     }
   });
@@ -236,21 +258,23 @@ function addBusinessLayers(map: maplibregl.Map, mapData: TransportMapData) {
     type: "circle",
     source: "trainmap-stations-endpoints",
     paint: {
-      "circle-color": ["match", ["get", "role"], "origin", "#9f1239", "destination", "#0f766e", "#111827"],
-      "circle-stroke-color": "#111827",
-      "circle-stroke-width": 1.5,
-      "circle-radius": 7.5
+      "circle-color": "#111827",
+      "circle-stroke-color": "#f8f5ef",
+      "circle-stroke-width": 2,
+      "circle-radius": mapMode === "overview" || mapMode === "export" ? 7 : 8.5
     }
   });
   map.addLayer({
     id: "trainmap-labels",
     type: "symbol",
-    source: "trainmap-stations-endpoints",
+    source: "trainmap-station-labels",
     layout: {
       "text-field": ["get", "name"],
-      "text-size": 12,
-      "text-offset": [0, 1.15],
-      "text-anchor": "top"
+      "text-size": mapMode === "detail" || mapMode === "preview" ? 13 : 11,
+      "text-offset": [0, 1.2],
+      "text-anchor": "top",
+      "text-allow-overlap": false,
+      "text-ignore-placement": false
     },
     paint: {
       "text-color": "#111827",
@@ -260,34 +284,89 @@ function addBusinessLayers(map: maplibregl.Map, mapData: TransportMapData) {
   });
 }
 
-function setBusinessLayerData(map: maplibregl.Map, mapData: TransportMapData) {
+function updateMapDataAndFit(map: maplibregl.Map, mapData: TransportMapData, mapMode: TransportMapMode) {
+  const apply = () => {
+    setBusinessLayerData(map, mapData, mapMode);
+    window.requestAnimationFrame(() => {
+      map.resize();
+      fitToTrips(map, mapData, mapMode);
+    });
+  };
+
+  if (map.isStyleLoaded()) {
+    apply();
+    return;
+  }
+
+  map.once("idle", apply);
+}
+
+function setBusinessLayerData(map: maplibregl.Map, mapData: TransportMapData, mapMode: TransportMapMode) {
   const routeSource = map.getSource("trainmap-routes") as maplibregl.GeoJSONSource | undefined;
   const endpointSource = map.getSource("trainmap-stations-endpoints") as maplibregl.GeoJSONSource | undefined;
   const intermediateSource = map.getSource("trainmap-stations-intermediate") as maplibregl.GeoJSONSource | undefined;
+  const labelSource = map.getSource("trainmap-station-labels") as maplibregl.GeoJSONSource | undefined;
   routeSource?.setData(mapData.routes);
   endpointSource?.setData(mapData.endpointStations);
   intermediateSource?.setData(mapData.intermediateStations);
+  labelSource?.setData(labelsForMode(mapData, mapMode));
 }
 
-function fitToTrips(map: maplibregl.Map, mapData: TransportMapData) {
-  const routeCoordinates = mapData.routes.features.flatMap((feature) =>
-    feature.geometry.coordinates.map((coordinate) => [coordinate[0], coordinate[1]] as Coordinate)
-  );
-  const stationCoordinates = [...mapData.endpointStations.features, ...mapData.intermediateStations.features].map(
-    (feature) => [feature.geometry.coordinates[0], feature.geometry.coordinates[1]] as Coordinate
-  );
-  const coordinates = [...routeCoordinates, ...stationCoordinates];
+function fitToTrips(map: maplibregl.Map, mapData: TransportMapData, mapMode: TransportMapMode) {
+  const coordinates = mapData.boundsCoordinates;
+
+  if (coordinates.length === 0) {
+    map.jumpTo({
+      center: [8.5, 47.3],
+      zoom: mapMode === "export" ? 3.8 : 4.1
+    });
+    return;
+  }
+
+  if (coordinates.length === 1) {
+    map.jumpTo({
+      center: coordinates[0],
+      zoom: mapMode === "overview" || mapMode === "export" ? 6 : 9
+    });
+    return;
+  }
+
   const bounds = fitBoundsFromCoordinates(coordinates);
 
   if (!bounds) {
     return;
   }
 
+  const compactRoute = Math.abs(bounds.east - bounds.west) < 0.02 && Math.abs(bounds.north - bounds.south) < 0.02;
+  if (compactRoute) {
+    map.jumpTo({
+      center: [(bounds.west + bounds.east) / 2, (bounds.south + bounds.north) / 2],
+      zoom: mapMode === "overview" || mapMode === "export" ? 8 : 10.5
+    });
+    return;
+  }
+
+  const focused = mapMode === "detail" || mapMode === "preview";
+
   map.fitBounds(
     [
       [bounds.west, bounds.south],
       [bounds.east, bounds.north]
     ],
-    { padding: 70, duration: 0, maxZoom: 7 }
+    {
+      padding: focused ? 56 : 78,
+      duration: 0,
+      maxZoom: focused ? 11 : 7.5
+    }
   );
+}
+
+function labelsForMode(mapData: TransportMapData, mapMode: TransportMapMode): TransportMapData["labelStations"] {
+  if (mapMode === "overview" || mapMode === "export") {
+    return {
+      type: "FeatureCollection",
+      features: mapData.labelStations.features.filter((feature) => feature.properties?.role !== "intermediate")
+    };
+  }
+  return mapData.labelStations;
 }

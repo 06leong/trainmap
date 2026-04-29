@@ -54,6 +54,7 @@ function MapOnlyExport({ config, trips }: { config: ExportConfig; trips: Trip[] 
         showCaption={false}
         initialBaseStyle={dark ? "dark" : "light"}
         frame="export"
+        mapMode="export"
         heightClass="h-full"
       />
       <div
@@ -87,6 +88,7 @@ function PosterExport({ config, trips }: { config: ExportConfig; trips: Trip[] }
             showCaption={false}
             initialBaseStyle={dark ? "dark" : "light"}
             frame="export"
+            mapMode="export"
             heightClass="h-full"
           />
         </div>

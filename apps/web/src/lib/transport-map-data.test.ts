@@ -11,6 +11,11 @@ describe("transport map data", () => {
     expect(data.endpointStations.features.map((feature) => feature.properties?.role)).toEqual(["origin", "destination"]);
     expect(data.intermediateStations.features).toHaveLength(4);
     expect(data.intermediateStations.features.every((feature) => feature.properties?.role === "intermediate")).toBe(true);
+    expect(data.labelStations.features.length).toBeLessThan(data.endpointStations.features.length + data.intermediateStations.features.length);
+    expect(data.labelStations.features.map((feature) => feature.properties?.role)).toContain("origin");
+    expect(data.labelStations.features.map((feature) => feature.properties?.role)).toContain("destination");
+    expect(data.boundsCoordinates).toHaveLength(6);
+    expect(data.hasUsableGeometry).toBe(true);
   });
 
   it("keeps route segments independent from station sources", () => {
@@ -29,6 +34,13 @@ describe("transport map data", () => {
     expect(data.routes.features.map((feature) => feature.properties?.segmentIndex)).toEqual([0, 1]);
     expect(data.endpointStations.features).toHaveLength(2);
     expect(data.intermediateStations.features).toHaveLength(1);
+    expect(data.boundsCoordinates).toEqual([
+      [8, 47],
+      [8.5, 47.5],
+      [9, 48],
+      [8.2, 47.2],
+      [8.1, 47.1]
+    ]);
   });
 
   it("falls back to route segment stops when persisted trip stops are missing", () => {
@@ -60,6 +72,28 @@ describe("transport map data", () => {
 
     expect(data.endpointStations.features.map((feature) => feature.properties?.name)).toEqual(["Zurich HB", "Milano Centrale"]);
     expect(data.intermediateStations.features.map((feature) => feature.properties?.name)).toEqual(["Lugano"]);
+  });
+
+  it("filters invalid coordinates so empty routes do not force a world fit", () => {
+    const trip = {
+      ...tripWithStops(0),
+      rawImportRow: {
+        routeSegments: [
+          {
+            sequence: 1,
+            stops: [{ id: "bad", stationName: "Bad", countryCode: "XX", coordinates: [999, 999] }],
+            geometry: { type: "LineString", coordinates: [[999, 999], [1000, 1000]] }
+          }
+        ]
+      }
+    } as unknown as Trip;
+
+    const data = buildTransportMapData([trip]);
+
+    expect(data.routes.features).toHaveLength(0);
+    expect(data.endpointStations.features).toHaveLength(0);
+    expect(data.boundsCoordinates).toEqual([]);
+    expect(data.hasUsableGeometry).toBe(false);
   });
 });
 

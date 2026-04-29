@@ -195,7 +195,7 @@ export function RouteEditor({
           <p className="mt-2 text-xs text-black/48">Set SWISS_OPEN_DATA_API_KEY to enable provider route refinement.</p>
         ) : null}
       </form>
-      <TransportMap trips={[previewTrip]} heightClass="h-[680px]" />
+      <TransportMap trips={[previewTrip]} heightClass="h-[680px]" mapMode="detail" />
     </div>
   );
 }

@@ -6,17 +6,24 @@ export interface TransportMapData {
   routes: FeatureCollection<LineString>;
   endpointStations: FeatureCollection<Point>;
   intermediateStations: FeatureCollection<Point>;
+  labelStations: FeatureCollection<Point>;
+  boundsCoordinates: Coordinate[];
+  hasUsableGeometry: boolean;
 }
 
 export const emptyTransportMapData: TransportMapData = {
   routes: { type: "FeatureCollection", features: [] },
   endpointStations: { type: "FeatureCollection", features: [] },
-  intermediateStations: { type: "FeatureCollection", features: [] }
+  intermediateStations: { type: "FeatureCollection", features: [] },
+  labelStations: { type: "FeatureCollection", features: [] },
+  boundsCoordinates: [],
+  hasUsableGeometry: false
 };
 
 export function buildTransportMapData(trips: Trip[]): TransportMapData {
   const endpointStationFeatures: TransportMapData["endpointStations"]["features"] = [];
   const intermediateStationFeatures: TransportMapData["intermediateStations"]["features"] = [];
+  const labelStationFeatures: TransportMapData["labelStations"]["features"] = [];
 
   for (const trip of trips) {
     const stops = stationStopsForTrip(trip);
@@ -42,13 +49,29 @@ export function buildTransportMapData(trips: Trip[]): TransportMapData {
       } else {
         endpointStationFeatures.push(feature);
       }
+      if (role !== "intermediate" || shouldLabelIntermediateStop(index, stops.length)) {
+        labelStationFeatures.push({
+          ...feature,
+          properties: {
+            ...feature.properties,
+            labelPriority: role === "intermediate" ? 1 : 0
+          }
+        });
+      }
     });
   }
+
+  const routes = trips.flatMap(routeFeaturesForTrip);
+  const routeCoordinates = routes.flatMap((feature) => feature.geometry.coordinates);
+  const stationCoordinates = [...endpointStationFeatures, ...intermediateStationFeatures].map(
+    (feature) => feature.geometry.coordinates as Coordinate
+  );
+  const boundsCoordinates = dedupeCoordinates([...routeCoordinates, ...stationCoordinates].filter(isCoordinate));
 
   return {
     routes: {
       type: "FeatureCollection",
-      features: trips.flatMap(routeFeaturesForTrip)
+      features: routes
     },
     endpointStations: {
       type: "FeatureCollection",
@@ -57,7 +80,13 @@ export function buildTransportMapData(trips: Trip[]): TransportMapData {
     intermediateStations: {
       type: "FeatureCollection",
       features: intermediateStationFeatures
-    }
+    },
+    labelStations: {
+      type: "FeatureCollection",
+      features: labelStationFeatures
+    },
+    boundsCoordinates,
+    hasUsableGeometry: boundsCoordinates.length > 0
   };
 }
 
@@ -92,14 +121,16 @@ function routeFeaturesForTrip(trip: Trip) {
   }
 
   const geometry = getGeometryForTripDetail(trip);
-  if (geometry.coordinates.length < 2) {
+  const coordinates = geometry.coordinates.filter(isCoordinate);
+  if (coordinates.length < 2) {
     return [];
   }
 
-  return [routeFeature(trip, geometry.coordinates, 0, 1)];
+  return [routeFeature(trip, coordinates, 0, 1)];
 }
 
 function routeFeature(trip: Trip, coordinates: Coordinate[], segmentIndex: number, segmentCount: number) {
+  const validCoordinates = coordinates.filter(isCoordinate);
   return {
     type: "Feature" as const,
     properties: {
@@ -112,7 +143,7 @@ function routeFeature(trip: Trip, coordinates: Coordinate[], segmentIndex: numbe
     },
     geometry: {
       type: "LineString" as const,
-      coordinates
+      coordinates: validCoordinates
     }
   };
 }
@@ -252,6 +283,31 @@ function coordinatesFromRawRouteSegment(record: Record<string, unknown>): Coordi
     .filter((coordinate): coordinate is Coordinate => coordinate !== null);
 }
 
+function shouldLabelIntermediateStop(index: number, stopCount: number): boolean {
+  if (stopCount <= 4) {
+    return true;
+  }
+  if (stopCount <= 8) {
+    return index % 2 === 0;
+  }
+  const interval = Math.ceil((stopCount - 2) / 4);
+  return index % interval === 0;
+}
+
+function dedupeCoordinates(coordinates: Coordinate[]): Coordinate[] {
+  const seen = new Set<string>();
+  const deduped: Coordinate[] = [];
+  for (const coordinate of coordinates) {
+    const key = `${coordinate[0].toFixed(6)},${coordinate[1].toFixed(6)}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(coordinate);
+  }
+  return deduped;
+}
+
 function isLineStringGeometry(value: unknown): value is LineStringGeometry {
   if (!value || typeof value !== "object") {
     return false;
@@ -267,7 +323,11 @@ function isCoordinate(value: unknown): value is Coordinate {
     typeof value[0] === "number" &&
     typeof value[1] === "number" &&
     Number.isFinite(value[0]) &&
-    Number.isFinite(value[1])
+    Number.isFinite(value[1]) &&
+    value[0] >= -180 &&
+    value[0] <= 180 &&
+    value[1] >= -90 &&
+    value[1] <= 90
   );
 }
 

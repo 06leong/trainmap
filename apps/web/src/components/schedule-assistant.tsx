@@ -82,7 +82,7 @@ export function ScheduleAssistant({ trainFormationConfigured }: { trainFormation
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(520px,0.95fr)_minmax(560px,1.05fr)]">
       <section className="overflow-hidden rounded-md border border-black/10 bg-white/72 shadow-sm">
-        <TransportMap trips={[previewTrip]} showCaption={false} heightClass="h-[720px]" />
+        <TransportMap trips={[previewTrip]} showCaption={false} heightClass="h-[720px]" mapMode="preview" />
         <div className="border-t border-black/10 bg-[#f8f5ef] p-4">
           <div className="flex items-center justify-between gap-4">
             <div>
