@@ -2,18 +2,28 @@
 
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Accessibility, Baby, Bike, CircleHelp, TrainFront, Utensils } from "lucide-react";
-import {
-  parseSwissFormationShortString,
-  type FormationStopSummary,
-  type FormationVehicleSummary,
-  type ParsedFormationShortString,
-  type ParsedFormationVehicle,
-  type SwissTrainFormationSummary
+import { Accessibility, Baby, Bike, CircleHelp, RefreshCw, TrainFront, Utensils } from "lucide-react";
+import type { TripStop } from "@trainmap/domain";
+import type {
+  FormationStopSummary,
+  FormationVehicleSummary,
+  ParsedFormationShortString,
+  ParsedFormationVehicle,
+  SwissTrainFormationSummary
 } from "@trainmap/timetable-adapters";
-import type { TrainFormationRecord } from "@/lib/providers/swiss-formation";
+import { normalizeStoredTrainFormation, type TrainFormationRecord } from "@/lib/formation-record";
 
-export function TrainFormationPanel({ record }: { record: TrainFormationRecord }) {
+export function TrainFormationPanel({
+  record,
+  referenceStops = [],
+  refreshAction
+}: {
+  record: TrainFormationRecord;
+  referenceStops?: TripStop[];
+  refreshAction?: (formData: FormData) => Promise<void>;
+}) {
+  const normalizedRecord = useMemo(() => normalizeStoredTrainFormation(record, referenceStops) ?? record, [record, referenceStops]);
+
   return (
     <section className="rounded-md border border-black/10 bg-white/72 p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -21,15 +31,28 @@ export function TrainFormationPanel({ record }: { record: TrainFormationRecord }
           <div className="text-xs uppercase text-black/45">Train Formation Service</div>
           <h2 className="mt-1 font-display text-2xl text-ink">Formation summary</h2>
         </div>
-        <div className="rounded-full border border-black/10 bg-[#f8f5ef] px-3 py-1 text-xs text-black/58">
-          {record.configured ? "configured" : "not configured"}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="rounded-full border border-black/10 bg-[#f8f5ef] px-3 py-1 text-xs text-black/58">
+            {normalizedRecord.configured ? "configured" : "not configured"}
+          </div>
+          <div className="rounded-full border border-black/10 bg-[#f8f5ef] px-3 py-1 text-xs text-black/58">
+            {normalizedRecord.archived ? "archived" : "live only"}
+          </div>
+          {refreshAction ? (
+            <form action={refreshAction}>
+              <button type="submit" className="inline-flex items-center gap-1.5 rounded-md bg-ink px-3 py-1.5 text-xs text-white">
+                <RefreshCw className="h-3.5 w-3.5" />
+                Refresh today's formation
+              </button>
+            </form>
+          ) : null}
         </div>
       </div>
 
-      {record.message ? <p className="mt-3 text-sm text-black/58">{record.message}</p> : null}
+      {normalizedRecord.message ? <p className="mt-3 text-sm text-black/58">{normalizedRecord.message}</p> : null}
 
       <div className="mt-4 space-y-4">
-        {record.summaries.map((summary) => (
+        {normalizedRecord.summaries.map((summary) => (
           <FormationSummaryPanel key={`${summary.evu}-${summary.operationDate}-${summary.trainNumber}`} summary={summary} />
         ))}
       </div>
@@ -41,14 +64,19 @@ function FormationSummaryPanel({ summary }: { summary: SwissTrainFormationSummar
   const stops = useMemo(() => normalizedStops(summary), [summary]);
   const [selectedStopIndex, setSelectedStopIndex] = useState(0);
   const selectedStop = stops[Math.min(selectedStopIndex, Math.max(0, stops.length - 1))];
-  const parsedFormation = selectedStop?.parsedFormation ?? summary.parsedFormationStrings?.[0] ?? fallbackParsedFormations(summary)[0];
+  const parsedFormation = selectedStop?.parsedFormation ?? summary.parsedFormationStrings?.[0];
 
   return (
     <div className="rounded-md border border-black/10 bg-[#f8f5ef] p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="font-medium text-ink">{summary.serviceLabel ?? `${summary.evu} ${summary.trainNumber}`}</div>
-          <div className="mt-1 text-xs text-black/48">{summary.endpoint}</div>
+          {summary.endpoint ? (
+            <details className="mt-1 text-xs text-black/48">
+              <summary className="cursor-pointer">Request endpoint</summary>
+              <div className="mt-1 break-all font-mono">{summary.endpoint}</div>
+            </details>
+          ) : null}
         </div>
         <div className="rounded-full border border-black/10 bg-white px-2 py-1 text-xs text-black/58">{summary.status}</div>
       </div>
@@ -91,26 +119,29 @@ function FormationSummaryPanel({ summary }: { summary: SwissTrainFormationSummar
 function FormationDiagram({ parsed }: { parsed: ParsedFormationShortString }) {
   const sectors = parsed.sectors.length > 0 ? parsed.sectors : [{ name: "Train", vehicles: parsed.vehicles }];
   return (
-    <div className="mt-4 space-y-3">
-      <div className="text-xs uppercase text-black/45">Platform sectors and vehicles</div>
-      {sectors.map((sector) => (
-        <div key={sector.name} className="grid gap-2 md:grid-cols-[56px_1fr]">
-          <div className="flex h-9 items-center justify-center rounded border border-black/10 bg-white font-medium text-ink">
-            {sector.name}
+    <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="space-y-3">
+        <div className="text-xs uppercase text-black/45">Platform sectors and vehicles</div>
+        {sectors.map((sector) => (
+          <div key={sector.name} className="grid gap-2 md:grid-cols-[56px_1fr]">
+            <div className="flex h-9 items-center justify-center rounded border border-black/10 bg-white font-medium text-ink">
+              {sector.name}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {sector.vehicles.map((vehicle) => (
+                <VehiclePill key={`${sector.name}-${vehicle.index}`} vehicle={vehicle} />
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {sector.vehicles.map((vehicle) => (
-              <VehiclePill key={`${sector.name}-${vehicle.index}`} vehicle={vehicle} />
-            ))}
+        ))}
+        {parsed.unknownTokens.length > 0 ? (
+          <div className="flex items-center gap-2 text-xs text-black/45">
+            <CircleHelp className="h-3.5 w-3.5" />
+            Unknown tokens preserved: {parsed.unknownTokens.join(", ")}
           </div>
-        </div>
-      ))}
-      {parsed.unknownTokens.length > 0 ? (
-        <div className="flex items-center gap-2 text-xs text-black/45">
-          <CircleHelp className="h-3.5 w-3.5" />
-          Unknown tokens preserved: {parsed.unknownTokens.join(", ")}
-        </div>
-      ) : null}
+        ) : null}
+      </div>
+      <FormationLegend />
     </div>
   );
 }
@@ -121,13 +152,16 @@ function VehiclePill({ vehicle }: { vehicle: ParsedFormationVehicle }) {
     <div
       title={vehicle.typeLabel}
       className={[
-        "min-w-[82px] rounded-md border px-2 py-1 text-xs shadow-sm",
-        vehicle.typeCode === "F" ? "border-black/5 bg-black/[0.04] text-black/35" : "border-black/10 bg-white text-ink",
+        "min-w-[104px] rounded-md border px-2 py-1 text-xs shadow-sm",
+        vehicle.typeCode === "F" || vehicle.typeCode === "X" ? "border-black/5 bg-black/[0.04] text-black/35" : "border-black/10 bg-white text-ink",
         vehicle.inTrainGroup ? "ring-1 ring-moss/30" : ""
       ].join(" ")}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium">{vehicle.displayNumber ? `${vehicle.typeCode}:${vehicle.displayNumber}` : vehicle.typeCode ?? "?"}</span>
+      <div className="flex items-start justify-between gap-2">
+        <span>
+          <span className="block font-medium">{vehicleTitle(vehicle)}</span>
+          <span className="block text-[10px] text-black/42">{vehicleSubtitle(vehicle)}</span>
+        </span>
         <span className="text-black/38">#{vehicle.index}</span>
       </div>
       <div className="mt-1 flex flex-wrap gap-1">
@@ -135,12 +169,38 @@ function VehiclePill({ vehicle }: { vehicle: ParsedFormationVehicle }) {
         {vehicle.groupEnd ? <Badge label="end" /> : null}
         {!vehicle.accessToPrevious || !vehicle.accessToNext ? <Badge label="no pass" /> : null}
         {vehicle.statuses.map((status) => (
-          <Badge key={status.code} label={status.label} />
+          <Badge key={status.code} label={status.code} title={status.label} />
         ))}
         {visibleServices.map((service) => (
           <ServiceBadge key={`${service.code}-${service.quantity ?? "n"}`} code={service.code} label={service.label} quantity={service.quantity} />
         ))}
       </div>
+    </div>
+  );
+}
+
+function FormationLegend() {
+  return (
+    <aside className="rounded-md border border-black/10 bg-white p-3 text-xs text-black/58">
+      <div className="font-medium text-ink">CUS short string guide</div>
+      <div className="mt-3 space-y-2">
+        <LegendLine label="@A...@Z" detail="platform sector" />
+        <LegendLine label="2:3" detail="2nd class coach, displayed coach no. 3" />
+        <LegendLine label=":11" detail="same vehicle type as previous coach, displayed no. 11" />
+        <LegendLine label="F / X" detail="platform filler / parked vehicle" />
+        <LegendLine label="[ ]" detail="vehicles belonging to this running train" />
+        <LegendLine label="( )" detail="no passage to neighbour on this side" />
+        <LegendLine label="BHP, KW, NF, VH" detail="wheelchair, stroller, low floor, bike" />
+      </div>
+    </aside>
+  );
+}
+
+function LegendLine({ label, detail }: { label: string; detail: string }) {
+  return (
+    <div className="grid grid-cols-[72px_1fr] gap-2">
+      <span className="font-mono text-ink">{label}</span>
+      <span>{detail}</span>
     </div>
   );
 }
@@ -153,10 +213,10 @@ function VehicleTable({ vehicles }: { vehicles: FormationVehicleSummary[] }) {
         <thead className="text-black/45">
           <tr className="border-b border-black/10">
             <th className="py-2 pr-3 font-medium">Pos</th>
-            <th className="py-2 pr-3 font-medium">No.</th>
+            <th className="py-2 pr-3 font-medium">Coach no.</th>
             <th className="py-2 pr-3 font-medium">Type</th>
             <th className="py-2 pr-3 font-medium">From / to</th>
-            <th className="py-2 pr-3 font-medium">Capacity</th>
+            <th className="py-2 pr-3 font-medium">Seats</th>
             <th className="py-2 pr-3 font-medium">Features</th>
             <th className="py-2 pr-3 font-medium">Sectors</th>
           </tr>
@@ -230,20 +290,13 @@ function normalizedStops(summary: SwissTrainFormationSummary): FormationStopSumm
   if (summary.stops?.length) {
     return summary.stops;
   }
-  return fallbackParsedFormations(summary).map((parsedFormation, index) => ({
+  return summary.parsedFormationStrings.map((parsedFormation, index) => ({
     sequence: index + 1,
-    name: `Sample ${index + 1}`,
+    name: `Formation sample ${index + 1}`,
     parsedFormation,
     formationString: parsedFormation.raw,
     vehicleGoals: []
   }));
-}
-
-function fallbackParsedFormations(summary: SwissTrainFormationSummary): ParsedFormationShortString[] {
-  if (summary.parsedFormationStrings?.length) {
-    return summary.parsedFormationStrings;
-  }
-  return rawStrings(summary).map(parseSwissFormationShortString);
 }
 
 function rawStrings(summary: SwissTrainFormationSummary): string[] {
@@ -251,7 +304,32 @@ function rawStrings(summary: SwissTrainFormationSummary): string[] {
 }
 
 function stopLabel(stop: FormationStopSummary, index: number): string {
-  return [String(index + 1), stop.name ?? "Unknown stop", stop.track ? `track ${stop.track}` : undefined].filter(Boolean).join(" · ");
+  return [String(index + 1), stop.name ?? "Stop name unavailable", stop.track ? `track ${stop.track}` : "track unavailable"]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function vehicleTitle(vehicle: ParsedFormationVehicle): string {
+  if (vehicle.typeCode === "F") {
+    return "Filler";
+  }
+  if (vehicle.typeCode === "X") {
+    return "Parked";
+  }
+  if (vehicle.displayNumber) {
+    return `Coach ${vehicle.displayNumber}`;
+  }
+  return vehicle.typeCode ?? "?";
+}
+
+function vehicleSubtitle(vehicle: ParsedFormationVehicle): string {
+  if (!vehicle.typeCode) {
+    return "unknown";
+  }
+  if (vehicle.typeCode === "F") {
+    return "platform gap";
+  }
+  return vehicle.typeLabel;
 }
 
 function SmallMetric({ label, value }: { label: string; value: string }) {
@@ -263,8 +341,12 @@ function SmallMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Badge({ label }: { label: string }) {
-  return <span className="rounded border border-black/10 bg-[#f8f5ef] px-1 text-[10px] text-black/52">{label}</span>;
+function Badge({ label, title }: { label: string; title?: string }) {
+  return (
+    <span title={title} className="rounded border border-black/10 bg-[#f8f5ef] px-1 text-[10px] text-black/52">
+      {label}
+    </span>
+  );
 }
 
 function ServiceBadge({ code, label, quantity }: { code: string; label: string; quantity?: number }) {

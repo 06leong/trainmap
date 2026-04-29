@@ -4,12 +4,13 @@ import { PageHeader } from "@/components/page-header";
 import { RouteEditor } from "@/components/route-editor";
 import { StatusPill } from "@/components/status-pill";
 import { TrainFormationPanel } from "@/components/train-formation-panel";
+import { refreshTrainFormationForTripAction } from "@/lib/actions/formation";
 import { TripEditForm } from "@/components/trip-form";
 import { refineTripGeometryWithSwissOpenDataAction, repairTripGeometryAction } from "@/lib/actions/geometry";
 import { updateTripAction } from "@/lib/actions/trips";
 import { getTrainmapRepository } from "@/lib/db";
+import { normalizeStoredTrainFormation } from "@/lib/formation-record";
 import { isSwissOpenDataConfigured } from "@/lib/providers/swiss-open-data";
-import type { TrainFormationRecord } from "@/lib/providers/swiss-formation";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,8 @@ export default async function TripDetailPage({ params }: { params: { tripId: str
   const saveTrip = updateTripAction.bind(null, trip.id);
   const repairTrip = repairTripGeometryAction.bind(null, trip.id);
   const refineWithSwissOpenData = refineTripGeometryWithSwissOpenDataAction.bind(null, trip.id);
-  const trainFormation = trainFormationFromRawImportRow(trip.rawImportRow);
+  const refreshFormation = refreshTrainFormationForTripAction.bind(null, trip.id);
+  const trainFormation = normalizeStoredTrainFormation(trip.rawImportRow?.trainFormation, trip.stops);
 
   return (
     <div>
@@ -72,7 +74,7 @@ export default async function TripDetailPage({ params }: { params: { tripId: str
           serviceClass={trip.serviceClass}
           action={saveTrip}
         />
-        {trainFormation ? <TrainFormationPanel record={trainFormation} /> : null}
+        {trainFormation ? <TrainFormationPanel record={trainFormation} referenceStops={trip.stops} refreshAction={refreshFormation} /> : null}
         <RouteEditor
           trip={trip}
           repairAction={repairTrip}
@@ -91,13 +93,4 @@ function TripMeta({ label, value }: { label: string; value: string }) {
       <div className="mt-2 font-display text-2xl text-ink">{value}</div>
     </div>
   );
-}
-
-function trainFormationFromRawImportRow(rawImportRow: Record<string, unknown> | undefined): TrainFormationRecord | null {
-  const candidate = rawImportRow?.trainFormation;
-  if (!candidate || typeof candidate !== "object") {
-    return null;
-  }
-
-  return candidate as TrainFormationRecord;
 }

@@ -173,6 +173,23 @@ export class PostgresTrainmapRepository implements TrainmapRepository {
     });
   }
 
+  async updateTripRawImportRow(id: string, rawImportRow: Record<string, unknown>): Promise<Trip> {
+    await this.executor.query(
+      `
+        update trips
+        set raw_import_row = $2, updated_at = now()
+        where id = $1
+      `,
+      [id, rawImportRow]
+    );
+
+    const updated = await this.getTrip(id);
+    if (!updated) {
+      throw new Error(`Updated trip ${id} could not be loaded.`);
+    }
+    return updated;
+  }
+
   async deleteTrip(id: string): Promise<void> {
     await this.executor.query("delete from trips where id = $1", [id]);
   }

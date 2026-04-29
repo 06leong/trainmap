@@ -1,5 +1,5 @@
 import type { FeatureCollection, LineString, Point } from "geojson";
-import type { Coordinate, LineStringGeometry, Trip } from "@trainmap/domain";
+import type { Coordinate, LineStringGeometry, Trip, TripStop } from "@trainmap/domain";
 import { getGeometryForTripDetail } from "@trainmap/geo";
 
 export interface TransportMapData {
@@ -19,7 +19,7 @@ export function buildTransportMapData(trips: Trip[]): TransportMapData {
   const intermediateStationFeatures: TransportMapData["intermediateStations"]["features"] = [];
 
   for (const trip of trips) {
-    const stops = [...trip.stops].sort((a, b) => a.sequence - b.sequence);
+    const stops = stationStopsForTrip(trip);
     stops.forEach((stop, index) => {
       const role = index === 0 ? "origin" : index === stops.length - 1 ? "destination" : "intermediate";
       const feature = {
@@ -59,6 +59,30 @@ export function buildTransportMapData(trips: Trip[]): TransportMapData {
       features: intermediateStationFeatures
     }
   };
+}
+
+function stationStopsForTrip(trip: Trip): TripStop[] {
+  const persistedStops = [...trip.stops].filter((stop) => isCoordinate(stop.coordinates)).sort((a, b) => a.sequence - b.sequence);
+  if (persistedStops.length > 0) {
+    return dedupeStops(persistedStops);
+  }
+
+  const routeSegmentStops = routeStopsFromRawSegments(trip);
+  if (routeSegmentStops.length > 0) {
+    return dedupeStops(routeSegmentStops);
+  }
+
+  const geometry = getGeometryForTripDetail(trip);
+  if (geometry.coordinates.length < 2) {
+    return [];
+  }
+
+  const first = geometry.coordinates[0];
+  const last = geometry.coordinates[geometry.coordinates.length - 1];
+  return [
+    fallbackStop(trip, "origin", first, 1),
+    fallbackStop(trip, "destination", last, 2)
+  ];
 }
 
 function routeFeaturesForTrip(trip: Trip) {
@@ -119,6 +143,93 @@ function routeSegmentsFromTrip(trip: Trip): Array<{ sequence: number; coordinate
   return parsedSegments.sort((left, right) => left.sequence - right.sequence);
 }
 
+function routeStopsFromRawSegments(trip: Trip): TripStop[] {
+  const routeSegments = trip.rawImportRow?.routeSegments;
+  if (!Array.isArray(routeSegments)) {
+    return [];
+  }
+
+  const stops: TripStop[] = [];
+  for (const routeSegment of routeSegments) {
+    if (!routeSegment || typeof routeSegment !== "object") {
+      continue;
+    }
+    const rawStops = (routeSegment as Record<string, unknown>).stops;
+    if (!Array.isArray(rawStops)) {
+      continue;
+    }
+    for (const rawStop of rawStops) {
+      const stop = stopFromRawSegmentStop(rawStop, trip.id, stops.length + 1);
+      if (stop) {
+        stops.push(stop);
+      }
+    }
+  }
+
+  return stops.map((stop, index) => ({ ...stop, sequence: index + 1 }));
+}
+
+function stopFromRawSegmentStop(value: unknown, tripId: string, sequence: number): TripStop | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const coordinates = record.coordinates;
+  if (!isCoordinate(coordinates)) {
+    return null;
+  }
+  const stationId = stringValue(record.stationId) ?? stringValue(record.id) ?? `${tripId}-segment-stop-${sequence}`;
+  return {
+    id: stringValue(record.id) ?? `${tripId}-segment-stop-${sequence}`,
+    stationId,
+    stationName: stringValue(record.stationName) ?? stringValue(record.name) ?? `Stop ${sequence}`,
+    countryCode: stringValue(record.countryCode) ?? "XX",
+    coordinates,
+    sequence,
+    arrivalAt: stringValue(record.arrivalAt),
+    departureAt: stringValue(record.departureAt),
+    source: "provider",
+    confidence: "matched"
+  };
+}
+
+function fallbackStop(trip: Trip, role: "origin" | "destination", coordinates: Coordinate, sequence: number): TripStop {
+  return {
+    id: `${trip.id}-${role}`,
+    stationId: `${trip.id}-${role}`,
+    stationName: role === "origin" ? "Origin" : "Destination",
+    countryCode: "XX",
+    coordinates,
+    sequence,
+    source: "provider",
+    confidence: "unmatched"
+  };
+}
+
+function dedupeStops(stops: TripStop[]): TripStop[] {
+  const deduped: TripStop[] = [];
+  for (const stop of stops) {
+    const previous = deduped[deduped.length - 1];
+    if (previous && sameStop(previous, stop)) {
+      deduped[deduped.length - 1] = {
+        ...previous,
+        arrivalAt: previous.arrivalAt ?? stop.arrivalAt,
+        departureAt: stop.departureAt ?? previous.departureAt
+      };
+      continue;
+    }
+    deduped.push(stop);
+  }
+  return deduped.map((stop, index) => ({ ...stop, sequence: index + 1 }));
+}
+
+function sameStop(left: TripStop, right: TripStop): boolean {
+  if (left.stationId && right.stationId && left.stationId === right.stationId) {
+    return true;
+  }
+  return left.stationName === right.stationName && left.coordinates[0] === right.coordinates[0] && left.coordinates[1] === right.coordinates[1];
+}
+
 function coordinatesFromRawRouteSegment(record: Record<string, unknown>): Coordinate[] {
   const geometry = record.geometry;
   if (isLineStringGeometry(geometry)) {
@@ -158,4 +269,8 @@ function isCoordinate(value: unknown): value is Coordinate {
     Number.isFinite(value[0]) &&
     Number.isFinite(value[1])
   );
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }

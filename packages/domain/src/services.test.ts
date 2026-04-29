@@ -164,6 +164,13 @@ class MemoryRepository implements TrainmapRepository {
     return updated;
   }
 
+  async updateTripRawImportRow(id: string, rawImportRow: Record<string, unknown>): Promise<Trip> {
+    const current = required(this.trips.get(id));
+    const updated = { ...current, rawImportRow, updatedAt: new Date().toISOString() };
+    this.trips.set(id, updated);
+    return updated;
+  }
+
   async deleteTrip(id: string): Promise<void> {
     this.trips.delete(id);
   }

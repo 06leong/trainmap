@@ -83,6 +83,8 @@ npm run swiss-open-data:smoke
 
 The smoke command searches `Zürich HB`, searches `Milano Centrale`, then runs a TripRequest between the selected station refs. It prints result counts and never prints the token.
 
+Train Formation live lookup is intentionally same-day only in Europe/Zurich time because the stop/sector details depend on CUS realtime data. When a same-day query succeeds, trainmap archives the result in `trips.raw_import_row.trainFormation`; that saved record remains visible later even when the upstream API no longer serves that operating day. Older saved records are normalized at render time, so UI/parser improvements apply without a database migration.
+
 To test the Train Formation Service manually, use a client that can send the bearer token. Opening the URL in a browser address bar will not include the required `Authorization` header:
 
 ```bash
@@ -203,7 +205,7 @@ docker compose exec -T postgres \
 - Stop sequence is the canonical route backbone.
 - `@trainmap/geo` provides `getRoute(...)`, `loadConnectionsOrSetManualVias(...)`, route confidence, fitBounds helpers, and geometry version creation.
 - Swiss Open Data OJP 2.0 can create and refine trips with provider stop sequences and leg projection / track section coordinates when `SWISS_OPEN_DATA_API_KEY` is configured.
-- Swiss Open Data Train Formation Service can enrich schedule-created trips with best-effort formation summaries for supported EVUs via `/formation/v2/formations_full`. GTFS Realtime tokens are configurable but reserved for future real-time updates tied to a matching GTFS Static feed.
+- Swiss Open Data Train Formation Service can enrich schedule-created trips with best-effort same-day formation summaries for supported EVUs via `/formation/v2/formations_full`; trainmap archives successful results in trip metadata for later viewing. GTFS Realtime tokens are configurable but reserved for future real-time updates tied to a matching GTFS Static feed.
 - The Add Trip page uses OJP 2.0 server-side for station search, connection search, stop sequence import, map preview, and provider geometry creation.
 - CSV import preserves raw rows and separates matched, fuzzy matched, unmatched, and invalid rows.
 - Timetable adapters expose stable provider contracts for `swiss_open_data`, `db_api`, `ns_api`, and `generic_gtfs`.

@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
-import type { FeatureCollection, LineString } from "geojson";
 import type { Coordinate, Trip } from "@trainmap/domain";
 import { fitBoundsFromCoordinates } from "@trainmap/geo";
 import { cn } from "@trainmap/ui";
@@ -99,7 +98,7 @@ export function TransportMap({
     setMapReady(false);
     wrapperRef.current?.setAttribute("data-map-ready", "false");
     setBusinessLayerData(map, mapData);
-    fitToTrips(map, mapData.routes);
+    fitToTrips(map, mapData);
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         setMapReady(true);
@@ -223,14 +222,24 @@ function addBusinessLayers(map: maplibregl.Map, mapData: TransportMapData) {
     }
   });
   map.addLayer({
+    id: "trainmap-stations-endpoint-halo",
+    type: "circle",
+    source: "trainmap-stations-endpoints",
+    paint: {
+      "circle-color": "#f8f5ef",
+      "circle-radius": 12,
+      "circle-opacity": 0.92
+    }
+  });
+  map.addLayer({
     id: "trainmap-stations-endpoints",
     type: "circle",
     source: "trainmap-stations-endpoints",
     paint: {
       "circle-color": ["match", ["get", "role"], "origin", "#9f1239", "destination", "#0f766e", "#111827"],
-      "circle-stroke-color": "#f8f5ef",
-      "circle-stroke-width": 2.5,
-      "circle-radius": 8
+      "circle-stroke-color": "#111827",
+      "circle-stroke-width": 1.5,
+      "circle-radius": 7.5
     }
   });
   map.addLayer({
@@ -260,10 +269,14 @@ function setBusinessLayerData(map: maplibregl.Map, mapData: TransportMapData) {
   intermediateSource?.setData(mapData.intermediateStations);
 }
 
-function fitToTrips(map: maplibregl.Map, routeData: FeatureCollection<LineString>) {
-  const coordinates = routeData.features.flatMap((feature) =>
+function fitToTrips(map: maplibregl.Map, mapData: TransportMapData) {
+  const routeCoordinates = mapData.routes.features.flatMap((feature) =>
     feature.geometry.coordinates.map((coordinate) => [coordinate[0], coordinate[1]] as Coordinate)
   );
+  const stationCoordinates = [...mapData.endpointStations.features, ...mapData.intermediateStations.features].map(
+    (feature) => [feature.geometry.coordinates[0], feature.geometry.coordinates[1]] as Coordinate
+  );
+  const coordinates = [...routeCoordinates, ...stationCoordinates];
   const bounds = fitBoundsFromCoordinates(coordinates);
 
   if (!bounds) {

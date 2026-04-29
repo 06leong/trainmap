@@ -32,6 +32,7 @@ export interface TrainmapRepository {
   getTrip(id: string): Promise<Trip | null>;
   createTrip(input: CreateTripInput): Promise<Trip>;
   updateTrip(id: string, input: UpdateTripInput): Promise<Trip>;
+  updateTripRawImportRow(id: string, rawImportRow: Record<string, unknown>): Promise<Trip>;
   deleteTrip(id: string): Promise<void>;
   listStations(query?: string): Promise<Station[]>;
   listStationAliases(stationId: string): Promise<StationAlias[]>;

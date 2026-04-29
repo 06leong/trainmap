@@ -247,7 +247,7 @@ describe("timetable adapters", () => {
   });
 
   it("parses Train Formation short strings into sectors, vehicles, services, and access markers", () => {
-    const parsed = parseSwissFormationShortString("@A,F,F@B,[(LK,2:18,2#BHP;KW;NF,W2:14,1:13,LK)]@C,X,>2,%WR,-K,=12#VR");
+    const parsed = parseSwissFormationShortString("@A,F,F@B,[(LK,2:18,2#BHP;KW;NF,W2:14,1:13,:14,LK)]@C,X,>2,%WR,-K,=12#VR");
 
     expect(parsed.sectors.map((sector) => sector.name)).toEqual(["A", "B", "C"]);
     expect(parsed.vehicles[2]).toMatchObject({
@@ -272,11 +272,17 @@ describe("timetable adapters", () => {
       displayNumber: "14",
       typeLabel: "Restaurant and 2nd class coach"
     });
-    expect(parsed.vehicles[7]).toMatchObject({ groupEnd: true, accessToNext: false });
-    expect(parsed.vehicles[9].statuses).toEqual([{ code: ">", label: "Vehicle with groups starting here" }]);
-    expect(parsed.vehicles[10].statuses).toEqual([{ code: "%", label: "Open but restaurant not served" }]);
-    expect(parsed.vehicles[11].statuses).toEqual([{ code: "-", label: "Closed" }]);
-    expect(parsed.vehicles[12].statuses).toEqual([{ code: "=", label: "Reserved for through groups" }]);
+    expect(parsed.vehicles[7]).toMatchObject({
+      raw: ":14",
+      typeCode: "1",
+      displayNumber: "14",
+      typeLabel: "1st class coach"
+    });
+    expect(parsed.vehicles[8]).toMatchObject({ groupEnd: true, accessToNext: false });
+    expect(parsed.vehicles[10].statuses).toEqual([{ code: ">", label: "Vehicle with groups starting here" }]);
+    expect(parsed.vehicles[11].statuses).toEqual([{ code: "%", label: "Open but restaurant not served" }]);
+    expect(parsed.vehicles[12].statuses).toEqual([{ code: "-", label: "Closed" }]);
+    expect(parsed.vehicles[13].statuses).toEqual([{ code: "=", label: "Reserved for through groups" }]);
   });
 
   it("normalizes Train Formation full payload stop and vehicle perspectives", () => {

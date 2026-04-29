@@ -30,6 +30,37 @@ describe("transport map data", () => {
     expect(data.endpointStations.features).toHaveLength(2);
     expect(data.intermediateStations.features).toHaveLength(1);
   });
+
+  it("falls back to route segment stops when persisted trip stops are missing", () => {
+    const trip = {
+      ...tripWithStops(0),
+      rawImportRow: {
+        routeSegments: [
+          {
+            sequence: 1,
+            stops: [
+              { id: "origin", stationId: "8503000", stationName: "Zurich HB", countryCode: "CH", coordinates: [8, 47] },
+              { id: "via", stationId: "8505300", stationName: "Lugano", countryCode: "CH", coordinates: [8.9, 46] }
+            ],
+            geometry: { type: "LineString", coordinates: [[8, 47], [8.9, 46]] }
+          },
+          {
+            sequence: 2,
+            stops: [
+              { id: "via-copy", stationId: "8505300", stationName: "Lugano", countryCode: "CH", coordinates: [8.9, 46] },
+              { id: "destination", stationId: "8301700", stationName: "Milano Centrale", countryCode: "IT", coordinates: [9.2, 45.48] }
+            ],
+            geometry: { type: "LineString", coordinates: [[8.9, 46], [9.2, 45.48]] }
+          }
+        ]
+      }
+    } as Trip;
+
+    const data = buildTransportMapData([trip]);
+
+    expect(data.endpointStations.features.map((feature) => feature.properties?.name)).toEqual(["Zurich HB", "Milano Centrale"]);
+    expect(data.intermediateStations.features.map((feature) => feature.properties?.name)).toEqual(["Lugano"]);
+  });
 });
 
 function tripWithStops(count: number): Trip {

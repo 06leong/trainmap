@@ -104,7 +104,7 @@ Train Formation Service is a REST/JSON service for train composition data, not a
 
 - `https://api.opentransportdata.swiss/formation`
 
-Do not add a version suffix in `SWISS_TRAIN_FORMATION_API_BASE_URL`. trainmap appends `/formations_full` to the base URL when it queries formation data.
+Do not add a version suffix in `SWISS_TRAIN_FORMATION_API_BASE_URL`. trainmap appends `/v2/formations_full` to the base URL when it queries formation data.
 
 Typical query parameters are:
 
@@ -124,8 +124,22 @@ Runtime behavior:
 
 - Formation is not used for route planning.
 - During Add Trip creation from an OJP connection, trainmap infers supported EVU codes from each OJP leg and extracts the train number from the train code.
+- Live Formation lookup is only attempted when the train operation date is the current Europe/Zurich date. The Formation API depends on CUS realtime data for stop/sector details, so historical formation data must be archived by trainmap when it is first queried.
+- Successful Formation summaries are stored in `trips.raw_import_row.trainFormation`. Once archived, the trip detail page can keep showing the saved formation even after the upstream API no longer returns that operating day.
+- Saved records are dynamically normalized on read. Older `formationStrings`-only records are re-parsed with the current short-string parser and UI legend without a database migration.
 - Supported inferred EVUs include `SBBP`, `BLSP`, `SOB`, `THURBO`, `RhB`, `TPF`, `TRN`, `MBC`, `OeBB`, and `ZB`.
 - Formation query failures do not block trip creation; the trip detail page shows available, unavailable, or failed summaries from the persisted trip metadata.
+
+Short string interpretation used by trainmap:
+
+- `@A` ... `@Z`: platform sectors.
+- `2:3`: second-class coach with displayed/reservation coach number `3`.
+- `:11`: displayed/reservation coach number `11`, inheriting the previous real vehicle type.
+- `F`: fictitious filler used to represent platform/train length gaps; not a passenger coach.
+- `X`: parked/stabled coach influencing sector allocation; not part of the running train.
+- `[` and `]`: start/end of the vehicle group belonging to the running train.
+- `(` and `)`: no passage to the neighbouring vehicle on that side.
+- `BHP`, `BZ`, `FZ`, `KW`, `NF`, `VH`, `VR`: wheelchair spaces, business zone, family zone, stroller platform, low-floor access, bicycle hooks/platform, and reservable bicycle hooks/platform.
 
 Manual diagnostic request shape:
 
@@ -133,7 +147,7 @@ Manual diagnostic request shape:
 curl -L \
   -H "Authorization: Bearer <TRAIN_FORMATION_TOKEN>" \
   -H "User-Agent: trainmap/0.1" \
-  "https://api.opentransportdata.swiss/formation/formations_full?evu=SBBP&operationDate=2026-04-30&trainNumber=718"
+  "https://api.opentransportdata.swiss/formation/v2/formations_full?evu=SBBP&operationDate=2026-04-30&trainNumber=718"
 ```
 
 The normal browser address bar cannot add the required bearer header. Use an API client such as Bruno/Postman/curl, or a browser extension that can attach request headers.

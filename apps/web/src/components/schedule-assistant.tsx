@@ -362,7 +362,7 @@ function RouteDetails({
         <Metric label="Line / train code" value={option.trainCode} />
         <Metric label="Transfers" value={option.transferCount === 0 ? "Direct" : String(option.transferCount ?? 0)} />
         <Metric label="Geometry points" value={String(option.geometry?.coordinates.length ?? option.stops.length)} />
-        <Metric label="Formation" value={trainFormationConfigured ? "Will query after save" : "Not configured"} />
+        <Metric label="Formation" value={trainFormationConfigured ? "Same-day after save" : "Not configured"} />
       </div>
     </div>
   );

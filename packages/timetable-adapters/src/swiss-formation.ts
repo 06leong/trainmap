@@ -247,23 +247,7 @@ export function buildSwissTrainFormationUrl(
 
 export function inferSwissTrainFormationQueries(option: SwissOpenDataRouteOption): SwissTrainFormationQuery[] {
   const operationDate = option.departureAt.slice(0, 10);
-  const queries: SwissTrainFormationQuery[] = [];
-
-  for (const service of option.services) {
-    const evu = service.operatorName ? evuFromOperatorName(service.operatorName) : null;
-    const trainNumber = trainNumberFromCode(service.trainCode);
-    if (!evu || !trainNumber) {
-      continue;
-    }
-    queries.push({
-      evu,
-      operationDate,
-      trainNumber,
-      serviceLabel: service.trainCode
-    });
-  }
-
-  return uniqueFormationQueries(queries);
+  return inferSwissTrainFormationQueriesFromServices(option.services, operationDate);
 }
 
 export function parseSwissFormationShortString(value: string): ParsedFormationShortString {
@@ -275,6 +259,7 @@ export function parseSwissFormationShortString(value: string): ParsedFormationSh
   let groupActive = false;
   let pendingGroupStart = false;
   let pendingNoAccessBefore = false;
+  let inheritedTypeCode: string | undefined;
 
   for (const token of tokens) {
     if (token.type === "sector") {
@@ -322,10 +307,21 @@ export function parseSwissFormationShortString(value: string): ParsedFormationSh
       continue;
     }
 
-    const vehicle = parseFormationVehicleToken(token.value, vehicles.length + 1, currentSector, groupActive, pendingGroupStart, pendingNoAccessBefore);
+    const vehicle = parseFormationVehicleToken(
+      token.value,
+      vehicles.length + 1,
+      currentSector,
+      groupActive,
+      pendingGroupStart,
+      pendingNoAccessBefore,
+      inheritedTypeCode
+    );
     pendingGroupStart = false;
     pendingNoAccessBefore = false;
     vehicles.push(vehicle);
+    if (vehicle.typeCode && !["F", "X", "LK"].includes(vehicle.typeCode)) {
+      inheritedTypeCode = vehicle.typeCode;
+    }
     if (vehicle.unknownTokens.length > 0) {
       unknownTokens.push(...vehicle.unknownTokens);
     }
@@ -344,6 +340,29 @@ export function parseSwissFormationShortString(value: string): ParsedFormationSh
 
 export function summarizeSwissTrainFormationPayload(payload: unknown): Omit<SwissTrainFormationSummary, keyof SwissTrainFormationQuery | "status" | "endpoint"> {
   return normalizeSwissTrainFormationPayload(payload);
+}
+
+export function inferSwissTrainFormationQueriesFromServices(
+  services: SwissOpenDataServiceSummary[],
+  operationDate: string
+): SwissTrainFormationQuery[] {
+  const queries: SwissTrainFormationQuery[] = [];
+
+  for (const service of services) {
+    const evu = service.operatorName ? evuFromOperatorName(service.operatorName) : null;
+    const trainNumber = trainNumberFromCode(service.trainCode);
+    if (!evu || !trainNumber) {
+      continue;
+    }
+    queries.push({
+      evu,
+      operationDate,
+      trainNumber,
+      serviceLabel: service.trainCode
+    });
+  }
+
+  return uniqueFormationQueries(queries);
 }
 
 export function normalizeSwissTrainFormationPayload(
@@ -584,7 +603,8 @@ function parseFormationVehicleToken(
   sector: string | undefined,
   inTrainGroup: boolean,
   groupStart: boolean,
-  noAccessBefore: boolean
+  noAccessBefore: boolean,
+  inheritedTypeCode?: string
 ): ParsedFormationVehicle {
   const unknownTokens: string[] = [];
   let remaining = raw.trim();
@@ -596,7 +616,8 @@ function parseFormationVehicleToken(
     remaining = remaining.slice(1);
   }
 
-  const [vehiclePart, servicePart] = remaining.split("#", 2);
+  const [rawVehiclePart, servicePart] = remaining.split("#", 2);
+  const vehiclePart = rawVehiclePart.startsWith(":") && inheritedTypeCode ? `${inheritedTypeCode}${rawVehiclePart}` : rawVehiclePart;
   const typeMatch = vehiclePart.match(/^(12|CC|FA|WL|WR|W1|W2|LK|[12DFKX])(?::([A-Za-z0-9-]+))?$/);
   const typeCode = typeMatch?.[1];
   const displayNumber = typeMatch?.[2];

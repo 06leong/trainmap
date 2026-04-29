@@ -3,5 +3,13 @@
   "short_name": "trainmap",
   "display": "standalone",
   "background_color": "#f8f5ef",
-  "theme_color": "#111827"
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
 }
